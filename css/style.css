@@ -691,10 +691,10 @@ body.offcanvas {
       z-index: 1;
       display: table-cell;
       vertical-align: middle; }
-  .services .desc {
+  .services .desc .desc-white {
     margin-top: 60px; }
-    .services .desc h3 {
-      font-size: 16px;
+    .services .desc .desc-white h3 {
+      font-size: 26px;
       font-weight: 700;
       text-transform: uppercase; }
   .services.color-2 .icon {
@@ -884,7 +884,7 @@ body.offcanvas {
       -webkit-transition: 0.3s;
       -o-transition: 0.3s;
       transition: 0.3s; }
-  .blog-entry .desc h3 {
+  .blog-entry .desc .desc-white h3 {
     font-size: 16px;
     margin-bottom: 25px;
     line-height: auto;
@@ -892,10 +892,10 @@ body.offcanvas {
     text-transform: uppercase;
     letter-spacing: 1px;
     font-family: "Quicksand", Arial, sans-serif; }
-    .blog-entry .desc h3 a {
+    .blog-entry .desc .desc-white h3 a {
       color: #000;
       text-decoration: none; }
-  .blog-entry .desc span {
+  .blog-entry .desc .desc-white span {
     display: block;
     margin-bottom: 20px;
     font-size: 12px;
@@ -903,9 +903,9 @@ body.offcanvas {
     text-transform: uppercase;
     letter-spacing: 1px;
     font-weight: 400; }
-    .blog-entry .desc span small i {
+    .blog-entry .desc .desc-white span small i {
       color: #999999; }
-  .blog-entry .desc .lead {
+  .blog-entry .desc .desc-white .lead {
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -935,7 +935,7 @@ body.offcanvas {
   width: 100%;
   display: block;
   margin-bottom: 30px; }
-  .project .desc {
+  .project .desc .desc-white {
     position: absolute;
     top: 0;
     bottom: 0;
@@ -946,20 +946,20 @@ body.offcanvas {
     -webkit-transition: 0.3s;
     -o-transition: 0.3s;
     transition: 0.3s; }
-    .project .desc .con {
+    .project .desc .desc-white .con {
       padding: 20px;
       display: block;
       position: relative;
       height: 300px; }
-      .project .desc .con .icon {
+      .project .desc .desc-white .con .icon {
         position: absolute;
         bottom: 20px;
         left: 20px;
         right: 20px; }
-        .project .desc .con .icon span {
+        .project .desc .desc-white .con .icon span {
           display: inline;
           padding-right: 5px; }
-          .project .desc .con .icon span a {
+          .project .desc .desc-white .con .icon span a {
             color: #333333;
             padding: 5px;
             background: rgba(255, 255, 255, 0.5);
@@ -967,10 +967,10 @@ body.offcanvas {
             -moz-border-radius: 4px;
             -ms-border-radius: 4px;
             border-radius: 4px; }
-        .project .desc .con .icon i {
+        .project .desc .desc-white .con .icon i {
           font-size: 16px;
           color: #333333; }
-    .project .desc h3 {
+    .project .desc .desc-white h3 {
       font-family: "Quicksand", Arial, sans-serif;
       font-size: 16px;
       font-weight: 500;
@@ -985,9 +985,9 @@ body.offcanvas {
       -webkit-transform: translate3d(0, -15px, 0);
       transform: translate3d(0, -15px, 0);
       margin-bottom: 15px; }
-      .project .desc h3 a {
+      .project .desc .desc-white h3 a {
         color: #fff; }
-    .project .desc span {
+    .project .desc .desc-white span {
       display: block;
       color: rgba(255, 255, 255, 0.7);
       font-size: 13px;
@@ -999,26 +999,26 @@ body.offcanvas {
       transition: transform 0.3s, opacity 0.3s, -webkit-transform 0.3s;
       -webkit-transform: translate3d(0, 15px, 0);
       transform: translate3d(0, 15px, 0); }
-      .project .desc span a {
+      .project .desc .desc-white span a {
         color: #000; }
     @media screen and (max-width: 768px) {
-      .project .desc {
+      .project .desc .desc-white {
         opacity: 1;
         background: rgba(0, 0, 0, 0.4); }
-        .project .desc h3 {
+        .project .desc .desc-white h3 {
           font-style: 28px;
           -webkit-transform: translate3d(0, 0, 0);
           transform: translate3d(0, 0, 0);
           color: #000; }
-        .project .desc span {
+        .project .desc .desc-white span {
           -webkit-transform: translate3d(0, 0, 0);
           transform: translate3d(0, 0, 0); } }
-  .project:hover .desc {
+  .project:hover .desc .desc-white {
     opacity: 1; }
-    .project:hover .desc h3 {
+    .project:hover .desc .desc-white h3 {
       -webkit-transform: translate3d(0, 0, 0);
       transform: translate3d(0, 0, 0); }
-    .project:hover .desc span {
+    .project:hover .desc .desc-white span {
       -webkit-transform: translate3d(0, 0, 0);
       transform: translate3d(0, 0, 0); }
 
