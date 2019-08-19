@@ -906,10 +906,10 @@ body.offcanvas {
     .blog-entry .desc .desc-white span small i {
       color: #999999; }
   .blog-entry .desc .desc-white .lead {
-    font-size: 2px;
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 2px;
-    color: #000; }
+    color: #ffffff; }
   .blog-entry:hover .blog-img img {
     -webkit-transform: scale(1.1);
     -moz-transform: scale(1.1);
