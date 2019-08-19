@@ -694,7 +694,7 @@ body.offcanvas {
   .services .desc .desc-white {
     margin-top: 60px; }
     .services .desc .desc-white h3 {
-      font-size: 26px;
+      font-size: 16px;
       font-weight: 700;
       text-transform: uppercase; }
   .services.color-2 .icon {
@@ -906,7 +906,7 @@ body.offcanvas {
     .blog-entry .desc .desc-white span small i {
       color: #999999; }
   .blog-entry .desc .desc-white .lead {
-    font-size: 12px;
+    font-size: 2px;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: #000; }
