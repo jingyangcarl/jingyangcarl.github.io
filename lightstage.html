@@ -25,6 +25,7 @@
         controls.enableDamping = true; // Enable inertia
         controls.dampingFactor = 0.05;
         controls.autoRotate = true; // Auto-rotate the camera
+        controls.autoRotateSpeed = 0.5;
 
         // Light stage parameters
         const numLightBoards = 10;
@@ -61,14 +62,14 @@
                     const t = j / (midPointsPerEdge + 1);
                     const x = start.x * (1 - t) + end.x * t;
                     const y = start.y * (1 - t) + end.y * t;
-                    const light2 = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), whiteMaterial);
-                    light2.position.set(x, y, 0);
-                    snowflake.add(light2);
+                    const whiteLED = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), whiteMaterial);
+                    whiteLED.position.set(x, y, 0);
+                    snowflake.add(whiteLED);
                 }
             }
 
             // 6 branches with 4 colored lights at the end forming a diamond
-            const branchLength = 1.5;
+            const branchLength = 1.5 * hexagonRadius;
             for (let i = 0; i < 6; i++) {
                 const angle = (i / 6) * Math.PI * 2;
                 const x = Math.cos(angle) * branchLength;
