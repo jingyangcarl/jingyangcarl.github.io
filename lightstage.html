@@ -19,6 +19,7 @@
         const renderer = new THREE.WebGLRenderer();
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
+        camera.position.z = 30;
 
         // Orbit controls
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -30,11 +31,13 @@
         // Light stage parameters
         const radiusLightStage = 10; // Radius of the unit light stage
         const radiusLED = 0.05; // Radius of the lights
+        const ledDensity = 1; 
         const radiusLightBoardMainHexagonWhite = 0.5; // Radius of the white hexagon light board
         const radiusLightBoardMainHexagonColor = radiusLightBoardMainHexagonWhite - 5 * radiusLED; // Radius of the color hexagon light board
         const radiusLightBoardDaughter = 2.1 * radiusLightBoardMainHexagonWhite; // Radius of the daughter light boards
         const daughterLedOffsetDistanceNormal = 0.3 * radiusLightBoardMainHexagonWhite; // Parameterized offset distance towards normal direction
         const daughterLedOffsetDistanceTangent = 0.15 * radiusLightBoardMainHexagonWhite; // Parameterized offset distance towards tangent direction
+        const lightStageRigFlashSpeed = 1; // Speed of the light stage rig flashing
 
         // Colors for the lights
         const white = 0xffffff;
@@ -110,7 +113,7 @@
         }
 
         // Generate light board positions
-        let geometry = new THREE.IcosahedronGeometry(radiusLightStage, 0);
+        let geometry = new THREE.IcosahedronGeometry(radiusLightStage, ledDensity-1);
         const positions = [];
         for (let i = 0; i < geometry.attributes.position.count; i++) {
             vertex = new THREE.Vector3().fromBufferAttribute(geometry.attributes.position, i);
@@ -130,9 +133,6 @@
         var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 1, transparent: true } );
         var wireframe = new THREE.LineSegments( geo, mat );
         scene.add( wireframe );
-        
-
-        camera.position.z = 30;
 
         // Animation loop
         function animate() {
@@ -141,7 +141,7 @@
             controls.update();
 
             // updates
-            wireframe.material.opacity = 1 + Math.sin(new Date().getTime() * .001); // change opacity of the wireframe
+            wireframe.material.opacity = 1 + Math.sin(new Date().getTime() * .0025 * lightStageRigFlashSpeed); // change opacity of the wireframe
         }
         animate();
     </script>
