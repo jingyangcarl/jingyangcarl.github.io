@@ -11,7 +11,6 @@
 </head>
 <body>
     <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script>
         // Scene setup
         const scene = new THREE.Scene();
@@ -20,13 +19,8 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Orbit controls
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true; // Enable inertia
-        controls.dampingFactor = 0.05;
-
         // Light stage parameters
-        const numLightBoards = 10; // 346
+        const numLightBoards = 10;
         const radius = 10; // Radius of the unit sphere
 
         // Colors for the lights
@@ -76,6 +70,10 @@
 
             const snowflake = createSnowflake();
             snowflake.position.set(x, y, z);
+
+            // Make the snowflake face the center
+            snowflake.lookAt(0, 0, 0);
+
             scene.add(snowflake);
         }
 
