@@ -29,65 +29,89 @@
 
         // Light stage parameters
         const numLightBoards = 10;
-        const radius = 10; // Radius of the unit sphere
+        const radiusLightStage = 10; // Radius of the unit light stage
+        const radiusLights = 0.05; // Radius of the lights
+        const radiusLightBoardMainHexagonWhite = 0.5; // Radius of the hexagon light board
+        const radiusLightBoardMainHexagonColor = radiusLightBoardMainHexagonWhite - 5 * radiusLights; // Radius of the hexagon light board
+        const radiusLightBoardDaughter = 2 * radiusLightBoardMainHexagonWhite;
+        const daughterLedOffsetDistanceLong = 0.3 * radiusLightBoardMainHexagonWhite; // Parameterized offset distance
+        const daughterLedOffsetDistanceShort = 0.15 * radiusLightBoardMainHexagonWhite; // Parameterized offset distance
 
         // Colors for the lights
+        const white = 0xffffff;
         const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffa500]; // Red, Green, Blue, Amber
 
         // Function to create a snowflake-shaped light board
-        function createSnowflake() {
-            const snowflake = new THREE.Group();
-
-            // Center hexagon of 12 white lights
-            const hexagonRadius = 0.5;
-            const whiteMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        function createLightBoard() {
+            const lightboard = new THREE.Group();
 
             // get the corner points of a hexagon
-            const hexagonVertices = [];
+            const hexagonCornerVertices = [];
             for (let i = 0; i < 6; i++) {
                 const angle = (i / 6) * Math.PI * 2;
-                const x = Math.cos(angle) * hexagonRadius;
-                const y = Math.sin(angle) * hexagonRadius;
-                hexagonVertices.push({ x, y });
+                const x = Math.cos(angle) * radiusLightBoardMainHexagonWhite;
+                const y = Math.sin(angle) * radiusLightBoardMainHexagonWhite;
+                hexagonCornerVertices.push({ x, y });
             }
 
-            // place hexagon middle edge points
+            // place white lights on the hexagon
             const midPointsPerEdge = 1;
             for (let i = 0; i < 6; i++) {
-                const start = hexagonVertices[i];
-                const end = hexagonVertices[(i + 1) % 6];
+                const start = hexagonCornerVertices[i];
+                const end = hexagonCornerVertices[(i + 1) % 6];
             
                 // Place two points on each edge
                 for (let j = 1; j <= (midPointsPerEdge + 1); j++) {
                     const t = j / (midPointsPerEdge + 1);
                     const x = start.x * (1 - t) + end.x * t;
                     const y = start.y * (1 - t) + end.y * t;
-                    const whiteLED = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), whiteMaterial);
-                    whiteLED.position.set(x, y, 0);
-                    snowflake.add(whiteLED);
+                    const led = new THREE.Mesh(new THREE.SphereGeometry(radiusLights, 8, 8), new THREE.MeshBasicMaterial({ color: white }));
+                    led.position.set(x, y, 0);
+                    lightboard.add(led);
                 }
+            }
+
+            // place innser colored lights on the hexagon in the order of white, red, white, green, white, blue
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2;
+                const x = Math.cos(angle) * radiusLightBoardMainHexagonColor;
+                const y = Math.sin(angle) * radiusLightBoardMainHexagonColor;
+                const color = i % 2 === 0 ? { color: white } : { color: colors[(i - 1) / 2 % 3] };
+                const led = new THREE.Mesh(new THREE.SphereGeometry(radiusLights, 8, 8), new THREE.MeshBasicMaterial(color));
+                led.position.set(x, y, 0);
+                lightboard.add(led);
             }
 
             // 6 branches with 4 colored lights at the end forming a diamond
-            const branchLength = 1.5 * hexagonRadius;
             for (let i = 0; i < 6; i++) {
                 const angle = (i / 6) * Math.PI * 2;
-                const x = Math.cos(angle) * branchLength;
-                const y = Math.sin(angle) * branchLength;
+                const x = Math.cos(angle) * radiusLightBoardDaughter;
+                const y = Math.sin(angle) * radiusLightBoardDaughter;
                 for (let j = 0; j < 4; j++) {
                     const color = colors[j];
-                    const light = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color }));
-                    const offsetAngle = angle + (j / 4) * Math.PI * 2 / 6;
-                    light.position.set(x + Math.cos(offsetAngle) * 0.3, y + Math.sin(offsetAngle) * 0.3, 0);
-                    snowflake.add(light);
+                    const led = new THREE.Mesh(new THREE.SphereGeometry(radiusLights, 8, 8), new THREE.MeshBasicMaterial({ color }));
+            
+                    // Calculate diamond offset positions using parameterized offsetDistance
+                    let offsetX = 0;
+                    let offsetY = 0;
+                    
+                    if (j === 0) { offsetX = -daughterLedOffsetDistanceLong; offsetY = 0; }  // j==0, red, Down
+                    else if (j === 1) { offsetX = 0; offsetY = -daughterLedOffsetDistanceShort; }  // j==1, Green, Left
+                    else if (j === 2) { offsetX = daughterLedOffsetDistanceLong; offsetY = 0; }  // j==2, Blue, Top
+                    else if (j === 3) { offsetX = 0; offsetY = daughterLedOffsetDistanceShort; }  // j==3, Amber, Right
+            
+                    const rotatedOffsetX = offsetX * Math.cos(angle) - offsetY * Math.sin(angle);
+                    const rotatedOffsetY = offsetX * Math.sin(angle) + offsetY * Math.cos(angle);
+                    led.position.set(x + rotatedOffsetX, y + rotatedOffsetY, 0);
+                    lightboard.add(led);
                 }
             }
 
-            return snowflake;
+            return lightboard;
         }
 
         // Generate light board positions
-        let geometry = new THREE.IcosahedronGeometry(radius, 0);
+        let geometry = new THREE.IcosahedronGeometry(radiusLightStage, 0);
         const positions = [];
         for (let i = 0; i < geometry.attributes.position.count; i++) {
             vertex = new THREE.Vector3().fromBufferAttribute(geometry.attributes.position, i);
@@ -107,7 +131,7 @@
 
         // Add light boards to the scene
         positions.forEach(pos => {
-            const snowflake = createSnowflake();
+            const snowflake = createLightBoard();
             snowflake.position.copy(pos);
             snowflake.lookAt(0, 0, 0);
             scene.add(snowflake);
