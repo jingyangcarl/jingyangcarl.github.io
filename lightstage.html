@@ -28,7 +28,6 @@
         controls.autoRotateSpeed = 0.5;
 
         // Light stage parameters
-        const numLightBoards = 10;
         const radiusLightStage = 10; // Radius of the unit light stage
         const radiusLED = 0.05; // Radius of the lights
         const radiusLightBoardMainHexagonWhite = 0.5; // Radius of the white hexagon light board
@@ -118,17 +117,6 @@
             positions.push(vertex);
         }
 
-        // Generate light board positions
-        // const positions = [];
-        // for (let i = 0; i < numLightBoards; i++) {
-        //     const theta = Math.acos(1 - 2 * (i + 0.5) / numLightBoards);
-        //     const phi = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5);
-        //     const x = radius * Math.sin(theta) * Math.cos(phi);
-        //     const y = radius * Math.sin(theta) * Math.sin(phi);
-        //     const z = radius * Math.cos(theta);
-        //     positions.push(new THREE.Vector3(x, y, z));
-        // }
-
         // Add light boards to the scene
         positions.forEach(pos => {
             const snowflake = createLightBoard();
@@ -139,7 +127,7 @@
 
         // light stage rig
         var geo = new THREE.EdgesGeometry( geometry ); // or WireframeGeometry( geometry )
-        var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 2 } );
+        var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 1, transparent: true } );
         var wireframe = new THREE.LineSegments( geo, mat );
         scene.add( wireframe );
         
@@ -151,6 +139,9 @@
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
             controls.update();
+
+            // updates
+            wireframe.material.opacity = 1 + Math.sin(new Date().getTime() * .001); // change opacity of the wireframe
         }
         animate();
     </script>
