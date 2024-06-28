@@ -40,13 +40,31 @@
             // Center hexagon of 12 white lights
             const hexagonRadius = 0.5;
             const whiteMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            for (let i = 0; i < 12; i++) {
-                const angle = (i / 12) * Math.PI * 2;
+
+            // get the corner points of a hexagon
+            const hexagonVertices = [];
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2;
                 const x = Math.cos(angle) * hexagonRadius;
                 const y = Math.sin(angle) * hexagonRadius;
-                const light = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), whiteMaterial);
-                light.position.set(x, y, 0);
-                snowflake.add(light);
+                hexagonVertices.push({ x, y });
+            }
+
+            // place hexagon middle edge points
+            const midPointsPerEdge = 1;
+            for (let i = 0; i < 6; i++) {
+                const start = hexagonVertices[i];
+                const end = hexagonVertices[(i + 1) % 6];
+            
+                // Place two points on each edge
+                for (let j = 1; j <= (midPointsPerEdge + 1); j++) {
+                    const t = j / (midPointsPerEdge + 1);
+                    const x = start.x * (1 - t) + end.x * t;
+                    const y = start.y * (1 - t) + end.y * t;
+                    const light2 = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), whiteMaterial);
+                    light2.position.set(x, y, 0);
+                    snowflake.add(light2);
+                }
             }
 
             // 6 branches with 4 colored lights at the end forming a diamond
