@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Light Stage Grid with Three.js</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Set up the scene, camera, and renderer
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a group to hold the points
+        const group = new THREE.Group();
+
+        // Function to generate uniformly distributed points on a sphere
+        function generateSpherePoints(numPoints, radius) {
+            const points = [];
+            const offset = 2 / numPoints;
+            const increment = Math.PI * (3 - Math.sqrt(5));
+
+            for (let i = 0; i < numPoints; i++) {
+                const y = ((i * offset) - 1) + (offset / 2);
+                const r = Math.sqrt(1 - Math.pow(y, 2));
+                const phi = ((i + 1) % numPoints) * increment;
+
+                const x = Math.cos(phi) * r;
+                const z = Math.sin(phi) * r;
+
+                points.push(new THREE.Vector3(x * radius, y * radius, z * radius));
+            }
+
+            return points;
+        }
+
+        // Generate 346 points on a unit sphere
+        const points = generateSpherePoints(346, 1);
+
+        // Create and add spheres at the generated points
+        points.forEach(point => {
+            const geometry = new THREE.SphereGeometry(0.02, 32, 32);
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const sphere = new THREE.Mesh(geometry, material);
+
+            sphere.position.copy(point);
+            group.add(sphere);
+        });
+
+        scene.add(group);
+
+        camera.position.z = 3;
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            group.rotation.y += 0.01;
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
