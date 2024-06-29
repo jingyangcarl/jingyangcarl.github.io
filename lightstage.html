@@ -283,6 +283,7 @@
             var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 1, transparent: true } );
             wireframe = new THREE.LineSegments( geo, mat );
             wireframe.name = 'rig';
+            wireframe.visible = args.lightstage.rig.show;
             scene.add( wireframe );
 
         }
