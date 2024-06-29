@@ -20,12 +20,12 @@
 
             gui_ls = gui.addFolder('Light Stage Setting');
             gui_ls.open();
-            gui_ls.add( args.lightstage, 'ledDensity', 1, 6, 1 ).onChange(v => wireframe = setupLightStage(reset=true)).listen();
-            gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => wireframe = setupLightStage(reset=true)).listen();
+            gui_ls.add( args.lightstage, 'ledDensity', 1, 6, 1 ).onChange(v => setupLightStage(reset=true)).listen();
+            gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => setupLightStage(reset=true)).listen();
 
             gui_ls_lightboard = gui_ls.addFolder('Light Board');
             gui_ls_lightboard.open();
-            gui_ls_lightboard.add( args.lightstage.lightboard, 'radiusWhiteLED', 0.01, 0.1, 0.01).name('White LED Radius').onChange(v => wireframe = setupLightStage(reset=true)).listen();
+            gui_ls_lightboard.add( args.lightstage.lightboard, 'radiusWhiteLED', 0.01, 0.1, 0.01).name('White LED Radius').onChange(v => setupLightStage(reset=true)).listen();
 
             gui_ls_rig = gui_ls.addFolder('Rig');
             gui_ls_rig.open();
@@ -34,7 +34,7 @@
             gui_controls = gui.addFolder('Controls');
             gui_controls.open();
             gui_controls.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
-            gui_controls.add( args.controls, 'reset').name('Reset').onChange(v => wireframe = onclick_btn_reset()).listen();
+            gui_controls.add( args.controls, 'reset').name('Reset').onChange(v => onclick_btn_reset()).listen();
 
             document.body.appendChild(gui.domElement);
         }
@@ -241,10 +241,17 @@
             // light stage rig
             var geo = new THREE.EdgesGeometry( geometry ); // or WireframeGeometry( geometry )
             var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 1, transparent: true } );
-            var wireframe = new THREE.LineSegments( geo, mat );
+            wireframe = new THREE.LineSegments( geo, mat );
             scene.add( wireframe );
 
-            return wireframe;
+        }
+
+        function setupControls() {
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = args.controls.enableDamping; // Enable inertia
+            controls.dampingFactor = args.controls.dampingFactor;
+            controls.autoRotate = args.controls.autoRotate;
+            controls.autoRotateSpeed = args.controls.autoRotateSpeed;
         }
 
         // Animation loop
@@ -273,8 +280,8 @@
             sync(args, args_init);
     
             // reset all args recursively but not the active property
-            wireframe = setupLightStage(reset=true);
-            return wireframe;
+            setupLightStage(reset=true);
+            setupControls();
         }
 
         function onWindowResize(){
@@ -294,6 +301,10 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
         camera.position.z = 3;
+
+        // Global variables
+        let wireframe;
+        let controls;
 
         let render_mode = 'points';
         const args_init = {
@@ -328,20 +339,13 @@
         let args = JSON.parse(JSON.stringify(args_init));
         args.controls.reset = function(){};
 
-        // Orbit controls
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = args.controls.enableDamping; // Enable inertia
-        controls.dampingFactor = args.controls.dampingFactor;
-        controls.autoRotate = args.controls.autoRotate;
-        controls.autoRotateSpeed = args.controls.autoRotateSpeed;
-
         // Colors for the lights
         const ledWhite = 0xffffff;
         const ledColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffa500]; // Red, Green, Blue, Amber
 
         // Setup light stage
-        // TODO: remove dependence on wireframe variable
-        wireframe = setupLightStage();
+        setupLightStage();
+        setupControls();
         createGUI();
         animate();
 
