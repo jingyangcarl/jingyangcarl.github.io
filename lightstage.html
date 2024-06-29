@@ -15,7 +15,17 @@
     <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.18.2/dist/lil-gui.umd.js"></script>
     <script>
 
-        function createGUI() {
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            camera.position.z = 3;
+        }
+
+        function setupGUI() {
             gui = new lil.GUI({autoPlace: true, closeFolders: true});
 
             gui_ls = gui.addFolder('Light Stage Setting');
@@ -293,16 +303,8 @@
 
         }
 
-
-        // Scene setup
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-        camera.position.z = 3;
-
         // Global variables
+        let scene, camera, renderer;
         let wireframe;
         let controls;
 
@@ -344,9 +346,10 @@
         const ledColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffa500]; // Red, Green, Blue, Amber
 
         // Setup light stage
+        init();
         setupLightStage();
         setupControls();
-        createGUI();
+        setupGUI();
         animate();
 
         window.addEventListener( 'resize', onWindowResize, false );
