@@ -10,10 +10,24 @@
     </style>
 </head>
 <body>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.18.2/dist/lil-gui.umd.js"></script>
-    <script>
+    <script type="importmap">
+        {
+          "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/",
+            "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.esm.min.js",
+            "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.3/build/index.module.js"
+          }
+        }
+      </script>
+    <script type="module">
+        
+        import * as THREE from 'three';
+        import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast, MeshBVHHelper } from 'three-mesh-bvh';
+        import Stats from 'three/addons/libs/stats.module.js';
+        import GUI from 'lil-gui';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
         function init() {
             // Scene setup
@@ -26,27 +40,42 @@
         }
 
         function setupGUI() {
-            gui = new lil.GUI({autoPlace: true, closeFolders: true});
+            gui = new GUI({autoPlace: true, closeFolders: true});
 
-            gui_ls = gui.addFolder('Light Stage Setting');
+            let gui_ls = gui.addFolder('Light Stage Setting');
             gui_ls.open();
-            gui_ls.add( args.lightstage, 'ledDensity', 1, 6, 1 ).onChange(v => setupLightStage(reset=true)).listen();
-            gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => setupLightStage(reset=true)).listen();
+            gui_ls.add( args.lightstage, 'ledDensity', 1, 6, 1 ).onChange(v => setupLightStage(true)).listen();
+            gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => setupLightStage(true)).listen();
 
-            gui_ls_lightboard = gui_ls.addFolder('Light Board');
+            let gui_ls_lightboard = gui_ls.addFolder('Light Board');
             gui_ls_lightboard.open();
-            gui_ls_lightboard.add( args.lightstage.lightboard, 'radiusWhiteLED', 0.01, 0.1, 0.01).name('White LED Radius').onChange(v => setupLightStage(reset=true)).listen();
+            gui_ls_lightboard.add( args.lightstage.lightboard, 'radiusWhiteLED', 0.01, 0.1, 0.01).name('White LED Radius').onChange(v => setupLightStage(true)).listen();
 
-            gui_ls_rig = gui_ls.addFolder('Rig');
+            let gui_ls_rig = gui_ls.addFolder('Rig');
             gui_ls_rig.open();
             gui_ls_rig.add( args.lightstage.rig, 'show').name('Show Rig').listen();
 
-            gui_controls = gui.addFolder('Controls');
+            let gui_controls = gui.addFolder('Controls');
             gui_controls.open();
             gui_controls.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
             gui_controls.add( args.controls, 'reset').name('Reset').onChange(v => onclick_btn_reset()).listen();
 
+            let gui_render = gui.addFolder('Render');
+            gui_render.open();
+            gui_render.add( args.render.rayCaster, 'count', 1, 10, 1).name('Ray Count').listen();
+            gui_render.add( args.render.rayCaster, 'firstHitOnly').name('First Hit Only').listen();
+            gui_render.add( args.render.rayCaster, 'displayHelper').name('Display Helper').listen();
+            gui_render.add( args.render.rayCaster, 'helperDepth', 1, 20, 1).name('Helper Depth').onChange(v => {
+                helper.depth = v;
+                helper.update();
+            } ).listen();
+
             document.body.appendChild(gui.domElement);
+        }
+
+        function setupStats() {
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
         }
 
         function buildPoints(positions, sizes, colors) {
@@ -226,38 +255,71 @@
         function setupLightStage(reset=false) {
 
             if (reset) {
-                clearScene();
+                // remove all light boards and rig
+                scene.remove(scene.getObjectByName('lightboards'));
+                scene.remove(scene.getObjectByName('rig'));
             }
-
-            // clear the scene
-            scene.children = scene.children.filter(child => child instanceof THREE.AmbientLight);
 
             // Generate light board positions
             let geometry = new THREE.IcosahedronGeometry(args.lightstage.radius, args.lightstage.ledDensity-1);
             const positions = [];
             for (let i = 0; i < geometry.attributes.position.count; i++) {
-                vertex = new THREE.Vector3().fromBufferAttribute(geometry.attributes.position, i);
+                let vertex = new THREE.Vector3().fromBufferAttribute(geometry.attributes.position, i);
                 positions.push(vertex);
             }
 
             // Add light boards to the scene
+            var lightboards = new THREE.Group();
+            lightboards.name = 'lightboards';
             positions.forEach(pos => {
                 const snowflake = createLightBoard();
                 snowflake.position.copy(pos);
                 snowflake.lookAt(0, 0, 0);
-                scene.add(snowflake);
+                lightboards.add(snowflake);
             });
+            scene.add(lightboards);
 
             // light stage rig
             var geo = new THREE.EdgesGeometry( geometry ); // or WireframeGeometry( geometry )
             var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 1, transparent: true } );
             wireframe = new THREE.LineSegments( geo, mat );
+            wireframe.name = 'rig';
             scene.add( wireframe );
 
         }
 
-        function setupControls() {
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
+        function setupBunny() {
+            // Load bunny
+            const loader = new FBXLoader();
+            loader.load( 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/fbx/stanford-bunny.fbx', object => {
+
+                mesh = object.children[ 0 ];
+
+                const geometry = mesh.geometry;
+                geometry.translate( 0, 0.5 / 0.0075, 0 );
+                geometry.scale( 0.1, 0.1, 0.1 );
+                geometry.computeBoundsTree();
+                bvh = geometry.boundsTree;
+
+                if ( ! args.render.rayCaster.useBVH ) {
+
+                    geometry.boundsTree = null;
+
+                }
+
+                scene.add( mesh );
+                mesh.scale.setScalar( 0.0075 );
+
+                helper = new MeshBVHHelper( mesh );
+                helper.color.set( 0xE91E63 );
+                helper.visible = args.render.rayCaster.displayHelper;
+                scene.add( helper );
+
+            } );
+        }
+
+        function setupOrbitControls() {
+            controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = args.controls.enableDamping; // Enable inertia
             controls.dampingFactor = args.controls.dampingFactor;
             controls.autoRotate = args.controls.autoRotate;
@@ -266,17 +328,33 @@
 
         // Animation loop
         function animate() {
+            render();
+            stats.update();
+        }
+
+        function render() {
+
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
             controls.update();
 
             // updates
-            wireframe.material.opacity = args.lightstage.rig.show * (1 + Math.sin(new Date().getTime() * .0025 * args.lightstage.rig.flashSpeed)); // change opacity of the wireframe
+            if (wireframe) {
+                wireframe.visible = args.lightstage.rig.show;
+                // wireframe.material.opacity = (1 + Math.sin(new Date().getTime() * .0025 * args.lightstage.rig.flashSpeed)); // change opacity of the wireframe
+            }
+        
+            if (helper) {
+                helper.visible = args.render.rayCaster.displayHelper;
+            }
+
+            if (mesh) {
+                mesh.rotation.y += 0.002;
+                mesh.updateMatrixWorld();
+            }
         }
 
         function onclick_btn_reset() {
-            debugger;
-
             // copy value of args_init to args recursively
             let sync = (a, b) => {
                 for (let k in a) {
@@ -290,8 +368,8 @@
             sync(args, args_init);
     
             // reset all args recursively but not the active property
-            setupLightStage(reset=true);
-            setupControls();
+            setupLightStage(true);
+            setupOrbitControls();
         }
 
         function onWindowResize(){
@@ -303,10 +381,18 @@
 
         }
 
+        
+        // Add the extension functions
+        THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+        THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+        THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
         // Global variables
-        let scene, camera, renderer;
+        let scene, camera, renderer, gui, stats;
         let wireframe;
         let controls;
+        let mesh, helper, bvh;
+        let sphereInstance, lineSegments;
 
         let render_mode = 'points';
         const args_init = {
@@ -334,8 +420,17 @@
                 enableDamping: true,
                 dampingFactor: 0.05,
                 autoRotate: true,
-                autoRotateSpeed: 0.2,
+                autoRotateSpeed: 0.1,
                 reset: function() {},
+            },
+            render: {
+                rayCaster: {
+                    count: 10,
+                    firstHitOnly: true,
+                    useBVH: true,
+                    displayHelper: false,
+                    helperDepth: 10,
+                }
             }
         }
         let args = JSON.parse(JSON.stringify(args_init));
@@ -347,9 +442,11 @@
 
         // Setup light stage
         init();
-        setupLightStage();
-        setupControls();
         setupGUI();
+        setupStats();
+        setupLightStage();
+        setupBunny();
+        setupOrbitControls();
         animate();
 
         window.addEventListener( 'resize', onWindowResize, false );
