@@ -36,7 +36,7 @@
             renderer = new THREE.WebGLRenderer();
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
-            camera.position.z = 3;
+            camera.position.z = 3.5;
         }
 
         function setupGUI() {
@@ -57,6 +57,7 @@
 
             let gui_controls = gui.addFolder('Controls');
             gui_controls.open();
+            gui_controls.add( args.controls, 'autoRotate').name('Enable Auto Rotation').onChange(v => controls.autoRotate = v).listen();
             gui_controls.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
 
             let gui_render = gui.addFolder('Render');
@@ -518,7 +519,7 @@
             render_mode: render_mode,
             lightstage: {
                 radius: 1.5,
-                ledDensity: 1,
+                ledDensity: 2,
                 lightboard: {
                     radiusWhiteLED: 0.05,
                     radiusScalarColorLED: 0.5, // the radius scalar * radiusWhiteLED is the radius of the hexogon of the color LED, which is fixed scalar due to equilateral triangle,
@@ -531,7 +532,7 @@
                     }
                 },
                 rig: {
-                    show: true,
+                    show: false,
                     flashSpeed: 1,  // Speed of the light stage rig flashing
                 }
             },
@@ -544,11 +545,11 @@
             },
             render: {
                 rayCaster: {
-                    radiusScalar: 1.75, // the radius scalar * lightstage.radius is the radius rays
+                    radiusScalar: 1.2, // the radius scalar * lightstage.radius is the radius rays
                     count: 10,
                     firstHitOnly: true,
                     useBVH: true,
-                    displayHelper: false,
+                    displayHelper: true,
                     helperDepth: 10,
                 }
             }
