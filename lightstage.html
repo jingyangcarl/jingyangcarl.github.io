@@ -18,8 +18,23 @@
         function createGUI() {
             gui = new lil.GUI({autoPlace: true, closeFolders: true});
 
-            gui.add( args, 'ledDensity', 1, 5, 1 ).onChange(v => wireframe = setupLightStage(reset=true));
-            gui.add( args, 'show_rig');
+            gui_ls = gui.addFolder('Light Stage Setting');
+            gui_ls.open();
+            gui_ls.add( args.lightstage, 'ledDensity', 1, 6, 1 ).onChange(v => wireframe = setupLightStage(reset=true)).listen();
+            gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => wireframe = setupLightStage(reset=true)).listen();
+
+            gui_ls_lightboard = gui_ls.addFolder('Light Board');
+            gui_ls_lightboard.open();
+            gui_ls_lightboard.add( args.lightstage.lightboard, 'radiusWhiteLED', 0.01, 0.1, 0.01).name('White LED Radius').onChange(v => wireframe = setupLightStage(reset=true)).listen();
+
+            gui_ls_rig = gui_ls.addFolder('Rig');
+            gui_ls_rig.open();
+            gui_ls_rig.add( args.lightstage.rig, 'show').name('Show Rig').listen();
+
+            gui_controls = gui.addFolder('Controls');
+            gui_controls.open();
+            gui_controls.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
+            gui_controls.add( args.controls, 'reset').name('Reset').onChange(v => wireframe = onclick_btn_reset()).listen();
 
             document.body.appendChild(gui.domElement);
         }
@@ -83,7 +98,7 @@
             return particle;
         }
 
-        function resetScene() {
+        function clearScene() {
             while(scene.children.length > 0){ 
                 scene.remove(scene.children[0]); 
             }
@@ -97,13 +112,15 @@
                 sizes: [],
                 colors: [],
             }
+            let radiusBasis = args.lightstage.lightboard.radiusWhiteLED;
+            let radiusLED = args.lightstage.lightboard.leds.radius;
 
             // get the corner points of a hexagon
             const hexagonCornerVertices = [];
             for (let i = 0; i < 6; i++) {
                 const angle = (i / 6) * Math.PI * 2;
-                const x = Math.cos(angle) * radiusLightBoardMainHexagonWhite;
-                const y = Math.sin(angle) * radiusLightBoardMainHexagonWhite;
+                const x = Math.cos(angle) * radiusBasis;
+                const y = Math.sin(angle) * radiusBasis;
                 hexagonCornerVertices.push({ x, y });
             }
 
@@ -134,8 +151,8 @@
             // place innser colored lights on the hexagon in the order of white, red, white, green, white, blue
             for (let i = 0; i < 6; i++) {
                 const angle = (i / 6) * Math.PI * 2;
-                const x = Math.cos(angle) * radiusLightBoardMainHexagonColor;
-                const y = Math.sin(angle) * radiusLightBoardMainHexagonColor;
+                const x = Math.cos(angle) * radiusBasis * args.lightstage.lightboard.radiusScalarColorLED;
+                const y = Math.sin(angle) * radiusBasis * args.lightstage.lightboard.radiusScalarColorLED;
                 if (args.render_mode === 'points') {
                     let color = i % 2 === 0 ? ledWhite : ledColors[(i - 1) / 2 % 3];
                     leds.positions.push(x, y, 0);
@@ -152,19 +169,21 @@
             // 6 daughter boards with 4 colored lights at the end forming a diamond
             for (let i = 0; i < 6; i++) {
                 const angle = (i / 6) * Math.PI * 2;
-                const x = Math.cos(angle) * radiusLightBoardDaughter;
-                const y = Math.sin(angle) * radiusLightBoardDaughter;
+                const x = Math.cos(angle) * radiusBasis * args.lightstage.lightboard.radiusScalarDaughter;
+                const y = Math.sin(angle) * radiusBasis * args.lightstage.lightboard.radiusScalarDaughter;
                 for (let j = 0; j < 4; j++) {
                     const color = ledColors[j];
             
                     // Calculate diamond offset positions using parameterized offsetDistance
                     let offsetX = 0;
                     let offsetY = 0;
+                    let dX = radiusBasis * args.lightstage.lightboard.radiusScalarDautherOffsetX;
+                    let dY = radiusBasis * args.lightstage.lightboard.radiusScalarDautherOffsetY;
                     
-                    if (j === 0) { offsetX = -daughterLedOffsetDistanceNormal; offsetY = 0; }  // j==0, red, Down
-                    else if (j === 1) { offsetX = 0; offsetY = -daughterLedOffsetDistanceTangent; }  // j==1, Green, Left
-                    else if (j === 2) { offsetX = daughterLedOffsetDistanceNormal; offsetY = 0; }  // j==2, Blue, Top
-                    else if (j === 3) { offsetX = 0; offsetY = daughterLedOffsetDistanceTangent; }  // j==3, Amber, Right
+                    if (j === 0) { offsetX = -dX; offsetY = 0; }  // j==0, red, Down
+                    else if (j === 1) { offsetX = 0; offsetY = -dY; }  // j==1, Green, Left
+                    else if (j === 2) { offsetX = dX; offsetY = 0; }  // j==2, Blue, Top
+                    else if (j === 3) { offsetX = 0; offsetY = dY; }  // j==3, Amber, Right
             
                     const rotatedOffsetX = offsetX * Math.cos(angle) - offsetY * Math.sin(angle);
                     const rotatedOffsetY = offsetX * Math.sin(angle) + offsetY * Math.cos(angle);
@@ -186,20 +205,25 @@
                 lightboard.add(leds);
             }
 
+            // draw boarder of the hexagon
+            const scalar = args.lightstage.lightboard.radiusScalarBoarder;
+            const hexagon = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(hexagonCornerVertices.map(v => new THREE.Vector3(scalar*v.x, scalar*v.y, 0))), new THREE.LineBasicMaterial({ color: 0xffffff }));
+            lightboard.add(hexagon);
+
             return lightboard;
         }
 
         function setupLightStage(reset=false) {
 
             if (reset) {
-                resetScene();
+                clearScene();
             }
 
             // clear the scene
             scene.children = scene.children.filter(child => child instanceof THREE.AmbientLight);
 
             // Generate light board positions
-            let geometry = new THREE.IcosahedronGeometry(radiusLightStage, args.ledDensity-1);
+            let geometry = new THREE.IcosahedronGeometry(args.lightstage.radius, args.lightstage.ledDensity-1);
             const positions = [];
             for (let i = 0; i < geometry.attributes.position.count; i++) {
                 vertex = new THREE.Vector3().fromBufferAttribute(geometry.attributes.position, i);
@@ -230,7 +254,27 @@
             controls.update();
 
             // updates
-            wireframe.material.opacity = args.show_rig * (1 + Math.sin(new Date().getTime() * .0025 * lightStageRigFlashSpeed)); // change opacity of the wireframe
+            wireframe.material.opacity = args.lightstage.rig.show * (1 + Math.sin(new Date().getTime() * .0025 * args.lightstage.rig.flashSpeed)); // change opacity of the wireframe
+        }
+
+        function onclick_btn_reset() {
+            debugger;
+
+            // copy value of args_init to args recursively
+            let sync = (a, b) => {
+                for (let k in a) {
+                    if (typeof a[k] === 'object') {
+                        sync(a[k], b[k]);
+                    } else {
+                        a[k] = b[k];
+                    }
+                }
+            }
+            sync(args, args_init);
+    
+            // reset all args recursively but not the active property
+            wireframe = setupLightStage(reset=true);
+            return wireframe;
         }
 
         function onWindowResize(){
@@ -249,35 +293,54 @@
         const renderer = new THREE.WebGLRenderer();
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
-        camera.position.z = 30;
+        camera.position.z = 3;
+
+        let render_mode = 'points';
+        const args_init = {
+            render_mode: render_mode,
+            lightstage: {
+                radius: 1.5,
+                ledDensity: 1,
+                lightboard: {
+                    radiusWhiteLED: 0.05,
+                    radiusScalarColorLED: 0.5, // the radius factor * radiusWhiteLED is the radius of the hexogon of the color LED, which is fixed scalar due to equilateral triangle,
+                    radiusScalarBoarder: 1.5, // the radius factor * radiusWhiteLED is the radius of the hexogon of main board, fixed scalar due to equilateral triangle,
+                    radiusScalarDaughter: 2.1, // the radius factor * radiusWhiteLED is the radius of the hexogon of daughter board
+                    radiusScalarDautherOffsetX: 0.3, // Parameterized offset distance towards normal direction
+                    radiusScalarDautherOffsetY: 0.15,// Parameterized offset distance towards tangent direction
+                    leds: {
+                        radius: render_mode === 'points' ? 10 : 0.01,
+                    }
+                },
+                rig: {
+                    show: true,
+                    flashSpeed: 1,  // Speed of the light stage rig flashing
+                }
+            },
+            controls: {
+                enableDamping: true,
+                dampingFactor: 0.05,
+                autoRotate: true,
+                autoRotateSpeed: 0.2,
+                reset: function() {},
+            }
+        }
+        let args = JSON.parse(JSON.stringify(args_init));
+        args.controls.reset = function(){};
 
         // Orbit controls
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true; // Enable inertia
-        controls.dampingFactor = 0.05;
-        controls.autoRotate = true; // Auto-rotate the camera
-        controls.autoRotateSpeed = 0.5;
-
-        const args = {
-            ledDensity: 1,
-            render_mode: 'points',
-            show_rig: true
-        }
-
-        // Light stage parameters
-        const radiusLightStage = 10; // Radius of the unit light stage
-        const radiusLED = args.render_mode === '' ? 0.05 : 50; // Radius of the lights
-        const radiusLightBoardMainHexagonWhite = 0.5; // Radius of the white hexagon light board
-        const radiusLightBoardMainHexagonColor = radiusLightBoardMainHexagonWhite - 0.25; // Radius of the color hexagon light board
-        const radiusLightBoardDaughter = 2.1 * radiusLightBoardMainHexagonWhite; // Radius of the daughter light boards
-        const daughterLedOffsetDistanceNormal = 0.3 * radiusLightBoardMainHexagonWhite; // Parameterized offset distance towards normal direction
-        const daughterLedOffsetDistanceTangent = 0.15 * radiusLightBoardMainHexagonWhite; // Parameterized offset distance towards tangent direction
+        controls.enableDamping = args.controls.enableDamping; // Enable inertia
+        controls.dampingFactor = args.controls.dampingFactor;
+        controls.autoRotate = args.controls.autoRotate;
+        controls.autoRotateSpeed = args.controls.autoRotateSpeed;
 
         // Colors for the lights
         const ledWhite = 0xffffff;
         const ledColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffa500]; // Red, Green, Blue, Amber
-        const lightStageRigFlashSpeed = 1; // Speed of the light stage rig flashing
 
+        // Setup light stage
+        // TODO: remove dependence on wireframe variable
         wireframe = setupLightStage();
         createGUI();
         animate();
