@@ -555,34 +555,54 @@
 
                 if (curr - args.lightstage.patterns.last_update > (1000/args.lightstage.patterns.fps)) {
                     args.lightstage.patterns.last_update = curr;
+
+                    let n_all_white = args.lightstage.patterns.fps / 2;
+                    let n_all_off = args.lightstage.patterns.fps / 2;
                     
                     // update lights
                     lightboards.children.forEach((lightboard, i) => {
                         let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
                         let leds_init = lightboard.userData['leds'].colors;
                         let led_light = lightboard.getObjectByName('led_light');
-                        if (i == args.lightstage.patterns.idx) {
+                        if (args.lightstage.patterns.idx < n_all_white) {
+                            // swith on all
                             for (let j = 0; j < leds.count; j++) {
-                                if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
-                                    // switch all white LEDs on
-                                    leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
-                                    led_light.visible = true;
-                                } else {
-                                    leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                                }
+                                leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                                led_light.visible = true;
+                            }
+                        } else if (args.lightstage.patterns.idx < (n_all_white + n_all_off)) {
+                            // switch off all
+                            for (let j = 0; j < leds.count; j++) {
+                                leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                                led_light.visible = false;
                             }
                         } else {
-                            // switch all white LEDs off
-                            for (let j = 0; j < leds.count; j++) {
-                                if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
-                                    leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                                    led_light.visible = false;
+                            // olat pattern
+
+                            // switch on the current light board i
+                            if (i+(n_all_white + n_all_off) == args.lightstage.patterns.idx) {
+                                for (let j = 0; j < leds.count; j++) {
+                                    if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
+                                        leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                                        led_light.visible = true;
+                                    } else {
+                                        leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                                    }
+                                }
+                            } else {
+                                // switch all other white LEDs off
+                                for (let j = 0; j < leds.count; j++) {
+                                    if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
+                                        leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                                        led_light.visible = false;
+                                    }
                                 }
                             }
+                            
                         }
                         leds.needsUpdate = true;
                     });
-                    args.lightstage.patterns.idx = (args.lightstage.patterns.idx+1) % lightboards.children.length;
+                    args.lightstage.patterns.idx = (args.lightstage.patterns.idx+1) % (lightboards.children.length+(n_all_white + n_all_off));
                 }
             } else if (args.lightstage.patterns.active == 'warmup') {
                 if (args.lightstage.patterns.idx >= 0) {
@@ -754,7 +774,7 @@
                     flashSpeed: 1,  // Speed of the light stage rig flashing
                 },
                 patterns: {
-                    active: 'warmup',
+                    active: 'olat',
                     idx: 0,
                     last_update: new Date().getTime(),
                     fps: 10,
