@@ -110,8 +110,8 @@
 </head>
 <body>
     <div id="info">
-        <a href="https://jingyangcarl.com" target="_blank" rel="noopener">Jing Yang</a>'s Ph.D. Projects with <a href="https://vgl.ict.usc.edu/LightStages/" target="_blank" rel="noopener">Light Stage</a><br/>
-        Toggle other settings of the <b>Virtual Light Stage</b> by "<span style="color: lightgreen">Controls</span>" on the right →.
+        <b><a href="https://jingyangcarl.com" target="_blank" rel="noopener">Jing Yang</a>'s Ph.D. Projects with <a href="https://vgl.ict.usc.edu/LightStages/" target="_blank" rel="noopener">Light Stage</a></b><br/>
+        <small>Toggle other settings of the <i><a href="" target="_blank" rel="noopener">Virtual Light Stage</a></i> by <i style="color: lightgreen">Controls</i> on the right →</small>
     </div>
     <script type="importmap">
         {
@@ -219,6 +219,7 @@
             gui_projects.add( args.projects, 'show').name('Show Projects').onChange(v => sphereLabels.visible = v).listen();
 
             gui.add( args.controls, 'reset').name('Reset').onChange(v => onclick_btn_reset()).listen();
+            gui.add( args.projects, 'papercopilot').name('I also build Paper Copilot').listen();
             document.body.appendChild(gui.domElement);
         }
 
@@ -905,9 +906,9 @@
                 dampingFactor: 0.05,
                 autoRotate: false,
                 autoRotateSpeed: 0.1,
-                reset: function() {},
                 autoRotate_mesh: true,
                 autoRotate_mesh_speed: 0.01,
+                reset: function() {},
             },
             render: {
                 rayCaster: {
@@ -991,11 +992,13 @@
                         cvf: '',
                         conf: '',
                     }
-                ]
+                ],
+                papercopilot: function() {},
             }
         }
         let args = JSON.parse(JSON.stringify(args_init));
         args.controls.reset = function(){};
+        args.projects.papercopilot = function(){window.open('https://papercopilot.com');};
 
         // Setup light stage
         init();
