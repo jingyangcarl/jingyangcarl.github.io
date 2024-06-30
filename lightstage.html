@@ -3,13 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Light Stage Grid</title>
+    <title>Jing Yang with Light Stage</title>
     <style>
-        body { margin: 0; }
-        canvas { display: block; }
+        body {
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: Monospace;
+            font-size: 13px;
+            line-height: 24px;
+            overscroll-behavior: none;
+        }
+        
+        a {
+            color: #2983ff;
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        button {
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+        
+        #info {
+            position: absolute;
+            top: 0px;
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            text-align: center;
+            -moz-user-select: none;
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            pointer-events: none;
+            background-color: rgba(255, 255, 255, 0.07);
+            z-index: 998 !important; /* TODO Solve this in HTML */
+        }
+        
+        a, button, input, select {
+            pointer-events: auto;
+        }
+        
+        .lil-gui {
+            z-index: 999 !important; /* TODO Solve this in HTML */
+        }
+
+        /* avoid empty links */
+        .icon {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            mask-size: contain;
+            transition: background-color 0.3s;
+        }
+        .icon[href=""] {
+            display: none;
+        }
+
+        /* Github logo */
+        .github-logo {
+            background-color: #525252;
+            mask: url('https://cdn.jsdelivr.net/npm/simple-icons@v8/icons/github.svg') no-repeat center;
+        }
+        .github-logo:hover {
+            background-color: #ffffff;
+        }
+
+        .home-logo {
+            background-color: #5b985b;
+            mask: url('https://cdn.jsdelivr.net/npm/simple-icons@v8/icons/googlehome.svg') no-repeat center;
+        }
+        .home-logo:hover {
+            background-color: #90EE90;
+        }
+
+        .pdf-logo {
+            background-color: #8a1115;
+            mask: url('https://cdn.jsdelivr.net/npm/simple-icons@v8/icons/adobeacrobatreader.svg') no-repeat center;
+        }
+        .pdf-logo:hover {
+            background-color: #EC1C24;
+        }
+
+        .arxiv-logo {
+            background-color: #530d0d;
+            mask: url('https://cdn.jsdelivr.net/npm/simple-icons@v8/icons/arxiv.svg') no-repeat center;
+        }
+        .arxiv-logo:hover {
+            background-color: #B31B1B;
+        }
+
+        .youtube-logo {
+            background-color: #770101;
+            mask: url('https://cdn.jsdelivr.net/npm/simple-icons@v8/icons/youtube.svg') no-repeat center;
+        }
+        .youtube-logo:hover {
+            background-color: #FF0000;
+        }
+        
     </style>
 </head>
 <body>
+    <div id="info">
+        <a href="https://jingyangcarl.com" target="_blank" rel="noopener">Jing Yang</a>'s Ph.D. Projects with <a href="https://vgl.ict.usc.edu/LightStages/" target="_blank" rel="noopener">Light Stage</a><br/>
+        Toggle other settings of the <b>Virtual Light Stage</b> by "<span style="color: lightgreen">Controls</span>" on the right →.
+    </div>
     <script type="importmap">
         {
           "imports": {
@@ -39,7 +142,7 @@
             // Scene setup
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 3.2;
+            camera.position.z = 2.5;
             cameraObject = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
             cameraObject.position.z = 0.6;
             renderer = new THREE.WebGLRenderer();
@@ -57,6 +160,7 @@
 
         function setupGUI() {
             gui = new GUI({autoPlace: true, closeFolders: true});
+            gui.close();
 
             let gui_ls = gui.addFolder('Light Stage Setting');
             gui_ls.open();
@@ -96,16 +200,19 @@
             gui_controls.add( args.controls, 'autoRotate').name('Camera Auto Rotation').onChange(v => controls.autoRotate = v).listen();
             gui_controls.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Camera Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
             gui_controls.add( args.controls, 'autoRotate_mesh').name('Mesh Auto Rotation').listen();
-            gui_controls.add( args.controls, 'autoRotate_mesh_speed', 0, 0.1, 0.01).name('Mesh Rotate Speed').listen();
+            gui_controls.add( args.controls, 'autoRotate_mesh_speed', 0, 1, 0.1).name('Mesh Rotate Speed').listen();
 
             let gui_render = gui.addFolder('Render');
             // gui_render.open();
-            gui_render.add( args.render.rayCaster, 'count', 0, 100, 1).name('Ray Count').listen();
-            gui_render.add( args.render.rayCaster, 'displayHelper').name('Show Helper').listen();
-            gui_render.add( args.render.rayCaster, 'helperDepth', 1, 20, 1).name('Helper Depth').onChange(v => {
+            gui_render.add( args.render.rayCaster.rays, 'count', 0, args.render.rayCaster.rays.maxNum, 1).name('Ray Count').listen();
+            gui_render.add( args.render.rayCaster, 'displayHelper').name('Show BVH').listen();
+            gui_render.add( args.render.rayCaster, 'helperDepth', 1, 20, 1).name('BVH Depth').onChange(v => {
                 helper.depth = v;
                 if (helper.visible) helper.update();
             } ).listen();
+            gui_render.add( args.render.sideRender, 'show').name('Show Side Render').onChange(v => {
+                rendererObject.domElement.style.display = v ? 'block' : 'none';
+            }).listen();
 
             let gui_projects = gui.addFolder('Projects');
             gui_projects.open();
@@ -358,7 +465,7 @@
             lightboards = new THREE.Group();
             lightboards.name = 'lightboards';
             positions.forEach(pos => {
-                let ledIntensities = ledColors.map((c, i) => (new THREE.Color(c)));
+                let ledIntensities = Object.entries(args.lightstage.lightboard.leds.colors).map(([k, v]) => (new THREE.Color(v)));
                 const lightboard = createLightBoard(ledIntensities);
                 lightboard.name = 'lightboard';
                 lightboard.visible = args.lightstage.lightboard.show;
@@ -401,7 +508,7 @@
                 mesh.scale.setScalar( 0.0075 );
 
                 helper = new MeshBVHHelper( mesh );
-                helper.color.set( 0xE91E63 );
+                helper.color.set( 'lightgreen' );
                 helper.visible = args.render.rayCaster.displayHelper;
                 scene.add( helper );
 
@@ -411,9 +518,9 @@
         function setupRayCaster() {
             // raycast visualizations
             const lineGeometry = new THREE.BufferGeometry();
-            lineGeometry.setAttribute( 'position', new THREE.BufferAttribute( new Float32Array( MAX_RAYS * 2 * 3 ), 3 ) );
+            lineGeometry.setAttribute( 'position', new THREE.BufferAttribute( new Float32Array( args.render.rayCaster.rays.maxNum * 2 * 3 ), 3 ) );
             lineSegments = new THREE.LineSegments( lineGeometry, new THREE.LineBasicMaterial( {
-                color: RAY_COLOR,
+                color: args.render.rayCaster.rays.color,
                 transparent: true,
                 opacity: 0.25,
                 depthWrite: false
@@ -421,8 +528,8 @@
 
             sphereInstance = new THREE.InstancedMesh(
                 new THREE.SphereGeometry(),
-                new THREE.MeshBasicMaterial( { color: RAY_COLOR } ),
-                2 * MAX_RAYS
+                new THREE.MeshBasicMaterial( { color: args.render.rayCaster.rays.color } ),
+                2 * args.render.rayCaster.rays.maxNum
             );
             sphereInstance.instanceMatrix.setUsage( THREE.DynamicDrawUsage );
             sphereInstance.count = 0;
@@ -441,7 +548,12 @@
 
                 let project = args.projects.items[i];
                 var div = document.createElement('div');
-                div.innerHTML = `<i>${project.conf}<i><br><i><b>${project.name}</b><i><br><a href="${project.link}" target="_blank">Github</a>`;
+                div.innerHTML = `<i>${project.conf}<i><br><i><b>${project.name}</b><i><br> \
+                    <a class="icon home-logo" href="${project.page}" target="_blank"></a> \
+                    <a class="icon github-logo" href="${project.github}" target="_blank"></a> \
+                    <a class="icon pdf-logo" href="${project.pdf}" target="_blank"></a> \
+                    <a class="icon arxiv-logo" href="${project.arxiv}" target="_blank"></a> \
+                    <a class="icon youtube-logo" href="${project.youtube}" target="_blank"></a>`;
                 div.style.color = 'white';
                 var label = new CSS2DObject(div);
                 sphereLabels.add(label);
@@ -457,7 +569,7 @@
             const scale = new THREE.Vector3( 1, 1, 1 );
             const matrix = new THREE.Matrix4();
 
-            for ( let i = 0; i < MAX_RAYS * 2; i ++ ) {
+            for ( let i = 0; i < args.render.rayCaster.rays.maxNum * 2; i ++ ) {
 
                 position.randomDirection().multiplyScalar( args.lightstage.radius * args.render.rayCaster.radiusScalar );
                 matrix.compose( position, quaternion, scale );
@@ -472,7 +584,7 @@
             if ( ! mesh ) return;
 
             _raycaster.firstHitOnly = args.render.rayCaster.firstHitOnly;
-            const rayCount = args.render.rayCaster.count;
+            const rayCount = args.render.rayCaster.rays.count;
 
             let lineNum = 0;
             for ( let i = 0; i < rayCount; i ++ ) {
@@ -491,7 +603,7 @@
                 _position.applyAxisAngle( _axis, 0.0003 );
 
                 // update the position
-                _scale.setScalar( 0.02 );
+                _scale.setScalar( args.render.rayCaster.rays.sphereScale );
                 _matrix.compose( _position, _quaternion, _scale );
                 sphereInstance.setMatrixAt( i * 2, _matrix );
 
@@ -670,7 +782,7 @@
             }
 
             if (mesh && args.controls.autoRotate_mesh) {
-                mesh.rotation.y += args.controls.autoRotate_mesh_speed;
+                mesh.rotation.y += args.controls.autoRotate_mesh_speed / 10;
                 mesh.updateMatrixWorld();
             }
 
@@ -682,13 +794,15 @@
 
             // inset scene
             // debugger;
-            renderer.setClearColor( 0x000000, 2 );
-            renderer.clearDepth(); // important!
-            renderer.setScissorTest( true );
-            renderer.setScissor( 20, 20, insetWidth, insetHeight);
-            renderer.setViewport( 20, 20, insetWidth, insetHeight);
-            renderer.render( scene, cameraObject );
-            renderer.setScissorTest( false );
+            if (args.render.sideRender.show) {
+                renderer.setClearColor( 0x000000, 2 );
+                renderer.clearDepth(); // important!
+                renderer.setScissorTest( true );
+                renderer.setScissor( 20, 20, insetWidth, insetHeight);
+                renderer.setViewport( 20, 20, insetWidth, insetHeight);
+                renderer.render( scene, cameraObject );
+                renderer.setScissorTest( false );
+            }
         }
 
         function onclick_btn_reset() {
@@ -717,8 +831,8 @@
             renderer.setSize( window.innerWidth, window.innerHeight );
             labelRenderer.setSize( window.innerWidth, window.innerHeight );
 
-            insetWidth = window.innerHeight / 4; // square
-            insetHeight = window.innerHeight / 4;
+            insetWidth = window.innerHeight / args.render.sideRender.insetScalar; // square
+            insetHeight = window.innerHeight / args.render.sideRender.insetScalar;
             cameraObject.aspect = insetWidth / insetHeight;
             cameraObject.updateProjectionMatrix();
         }
@@ -744,8 +858,6 @@
         const _scale = new THREE.Vector3( 1, 1, 1 );
         const _matrix = new THREE.Matrix4();
         const _axis = new THREE.Vector3();
-        const MAX_RAYS = 3000;
-        const RAY_COLOR = 0x444444;
 
         let render_mode = 'points';
         const args_init = {
@@ -767,6 +879,13 @@
                     leds: {
                         show: true,
                         radius: render_mode === 'points' ? 5 : 0.01,
+                        colors: {
+                            white: 0xffffff,
+                            red: 0xff0000,
+                            green: 0x00ff00,
+                            blue: 0x0000ff,
+                            amber: 0xffa500,
+                        }
                     }
                 },
                 rig: {
@@ -792,12 +911,21 @@
             },
             render: {
                 rayCaster: {
-                    radiusScalar: 1.5, // the radius scalar * lightstage.radius is the radius rays
-                    count: 20,
+                    radiusScalar: 1, // the radius scalar * lightstage.radius is the radius rays
+                    rays: {
+                        count: 20,
+                        sphereScale: 0.01,
+                        color: 0x444444,
+                        maxNum: 3000,
+                    },
                     firstHitOnly: true,
                     useBVH: true,
                     displayHelper: true,
                     helperDepth: 10,
+                },
+                sideRender: {
+                    show: true,
+                    insetScalar: 4,
                 }
             },
             projects: {
@@ -805,32 +933,62 @@
                 items: [
                     {
                         name: 'Light Sampling Field',
-                        description: 'Description 1',
-                        link: 'https://jingyangcarl.github.io/LightSamplingField/',
+                        page: 'https://jingyangcarl.github.io/LightSamplingField/',
+                        github: 'https://github.com/jingyangcarl/LightSamplingField',
+                        pdf: 'https://arxiv.org/pdf/2304.05472.pdf',
+                        arxiv: 'https://arxiv.org/abs/2304.05472',
+                        youtube: 'https://youtu.be/qpIgS11DlJE',
+                        paperswithcode: '',
+                        openreview: '',
+                        cvf: '',
                         conf: 'ICLR 2023',
                     },
                     {
                         name: 'Material Authoring',
-                        description: 'Description 4',
-                        link: '',
+                        page: '',
+                        github: '',
+                        pdf: '',
+                        arxiv: '',
+                        youtube: '',
+                        paperswithcode: '',
+                        openreview: '',
+                        cvf: '',
                         conf: '',
                     },
                     {
                         name: 'Material Acquisition',
-                        description: 'Description 4',
-                        link: '',
+                        page: '',
+                        github: '',
+                        pdf: '',
+                        arxiv: '',
+                        youtube: '',
+                        paperswithcode: '',
+                        openreview: '',
+                        cvf: '',
                         conf: '',
                     },
                     {
                         name: 'Polarized Reflectance Field Database',
-                        description: 'Description 2',
-                        link: '',
+                        page: '',
+                        github: '',
+                        pdf: '',
+                        arxiv: '',
+                        youtube: '',
+                        paperswithcode: '',
+                        openreview: '',
+                        cvf: '',
                         conf: '',
                     },
                     {
                         name: 'Material Database',
-                        description: 'Description 3',
-                        link: '',
+                        page: '',
+                        github: '',
+                        pdf: '',
+                        arxiv: '',
+                        youtube: '',
+                        paperswithcode: '',
+                        openreview: '',
+                        cvf: '',
                         conf: '',
                     }
                 ]
@@ -838,9 +996,6 @@
         }
         let args = JSON.parse(JSON.stringify(args_init));
         args.controls.reset = function(){};
-
-        // Colors for the lights
-        const ledColors = [0xffffff, 0xff0000, 0x00ff00, 0x0000ff, 0xffa500]; // white, Red, Green, Blue, Amber
 
         // Setup light stage
         init();
