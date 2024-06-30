@@ -15,6 +15,7 @@
           "imports": {
             "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
             "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/",
+            "three/nodes": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/nodes/Nodes.js",
             "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.esm.min.js",
             "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.3/build/index.module.js"
           }
@@ -28,12 +29,17 @@
         import GUI from 'lil-gui';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import WebGPU from 'three/addons/capabilities/WebGPU.js';
+        import WebGL from 'three/addons/capabilities/WebGL.js';
+        import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js';
+        import { color, lights, normalMap, MeshPhongNodeMaterial } from 'three/nodes';
 
         function init() {
             // Scene setup
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer();
+            // renderer = new WebGPURenderer();
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
             camera.position.z = 3.5;
@@ -255,6 +261,13 @@
             if (args.render_mode === 'points') {
                 let ledsGroup = buildPoints(leds.positions, leds.sizes, leds.colors);
                 ledsGroup.name = 'leds';
+
+                let point_light = new THREE.PointLight(0xffffff, 1);
+                point_light.name = 'led_light';
+                point_light.power = 1700;
+                point_light.visible = false;
+                ledsGroup.add(point_light);
+                
                 lightboard.add(ledsGroup);
                 lightboard.userData['leds'] = {
                     positions: leds.positions,
@@ -498,11 +511,13 @@
                     lightboards.children.forEach((lightboard, i) => {
                         let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
                         let leds_init = lightboard.userData['leds'].colors;
+                        let led_light = lightboard.getObjectByName('led_light');
                         if (i == args.lightstage.patterns.idx) {
                             for (let j = 0; j < leds.count; j++) {
                                 if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
                                     // switch all white LEDs on
                                     leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                                    led_light.visible = true;
                                 } else {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
                                 }
@@ -512,6 +527,7 @@
                             for (let j = 0; j < leds.count; j++) {
                                 if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                                    led_light.visible = false;
                                 }
                             }
                         }
@@ -524,8 +540,10 @@
                     lightboards.children.forEach((lightboard, i) => {
                         let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
                         let leds_init = lightboard.userData['leds'].colors;
+                        let led_light = lightboard.getObjectByName('led_light');
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                            led_light.visible = true;
                         }
                         leds.needsUpdate = true;
                     });
@@ -536,8 +554,10 @@
                     lightboards.children.forEach((lightboard, i) => {
                         let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
                         let leds_init = lightboard.userData['leds'].colors;
+                        let led_light = lightboard.getObjectByName('led_light');
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                            led_light.visible = false;
                         }
                         leds.needsUpdate = true;
                     });
