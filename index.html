@@ -219,6 +219,7 @@
             gui_projects.add( args.projects, 'show').name('Show Projects').onChange(v => sphereLabels.visible = v).listen();
 
             gui.add( args.controls, 'reset').name('Reset').onChange(v => onclick_btn_reset()).listen();
+            gui.add( args.controls, 'fullscreen').name('Fullscreen').listen();
             gui.add( args.projects, 'papercopilot').name('I also build Paper Copilot').listen();
             document.body.appendChild(gui.domElement);
         }
@@ -909,6 +910,7 @@
                 autoRotate_mesh: true,
                 autoRotate_mesh_speed: 0.01,
                 reset: function() {},
+                fullscreen: function() {},
             },
             render: {
                 rayCaster: {
@@ -998,6 +1000,7 @@
         }
         let args = JSON.parse(JSON.stringify(args_init));
         args.controls.reset = function(){};
+        args.controls.fullscreen = function(){window.open('https://jingyangcarl.github.io/');};
         args.projects.papercopilot = function(){window.open('https://papercopilot.com');};
 
         // Setup light stage
