@@ -44,16 +44,28 @@
 
             let gui_ls = gui.addFolder('Light Stage Setting');
             gui_ls.open();
-            gui_ls.add( args.lightstage, 'ledDensity', 1, 6, 1 ).onChange(v => setupLightStage(true)).listen();
+            gui_ls.add( args.lightstage, 'ledDensity', 1, 10, 1 ).onChange(v => setupLightStage(true)).listen();
             gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => setupLightStage(true)).listen();
 
             let gui_ls_lightboard = gui_ls.addFolder('Light Board');
             gui_ls_lightboard.open();
+            gui_ls_lightboard.add( args.lightstage.lightboard, 'show').name('Show Light Board').onChange(v => {
+                scene.getObjectByName('lightboards').children.forEach(lightboard => 
+                    lightboard.children.forEach(x => {
+                        if (x.name === 'border') x.visible = v;
+                    }));
+            }).listen();
             gui_ls_lightboard.add( args.lightstage.lightboard, 'radiusWhiteLED', 0.01, 0.1, 0.01).name('White LED Radius').onChange(v => setupLightStage(true)).listen();
 
             let gui_ls_rig = gui_ls.addFolder('Rig');
             gui_ls_rig.open();
-            gui_ls_rig.add( args.lightstage.rig, 'show').name('Show Rig').listen();
+            gui_ls_rig.add( args.lightstage.rig, 'show').name('Show Rig').onChange(v => wireframe.visible = v).listen();
+
+            let gui_ls_patterns = gui_ls.addFolder('Patterns');
+            gui_ls_patterns.open();
+            gui_ls_patterns.add(args.lightstage.patterns, 'active', ['olat', 'warmup', 'off']).name('Patterns').onChange(v => args.lightstage.patterns.idx=0).listen();
+            gui_ls_patterns.add(args.lightstage.patterns, 'fps', 1, 60, 1).name('FPS').listen();
+            gui_ls_patterns.add(args.lightstage.patterns, 'idx').name('Pattern Index').listen().disable();
 
             let gui_controls = gui.addFolder('Controls');
             gui_controls.open();
@@ -62,7 +74,7 @@
 
             let gui_render = gui.addFolder('Render');
             gui_render.open();
-            gui_render.add( args.render.rayCaster, 'count', 0, 10, 1).name('Ray Count').listen();
+            gui_render.add( args.render.rayCaster, 'count', 0, 100, 1).name('Ray Count').listen();
             gui_render.add( args.render.rayCaster, 'displayHelper').name('Display Helper').listen();
             gui_render.add( args.render.rayCaster, 'helperDepth', 1, 20, 1).name('Helper Depth').onChange(v => {
                 helper.depth = v;
@@ -125,6 +137,7 @@
             geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
             geo.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
             geo.setAttribute('customColor', new THREE.Float32BufferAttribute(colors, 3));
+            geo.attributes.customColor.needsUpdate = true;
             var mat = new THREE.ShaderMaterial({
                 uniforms: {
                     color: { value: new THREE.Color(colors) },
@@ -144,7 +157,7 @@
         }
 
         // Function to create a snowflake-shaped light board
-        function createLightBoard() {
+        function createLightBoard(ledIntensities) {
             const lightboard = new THREE.Group();
             let leds = {
                 positions: [],
@@ -178,9 +191,9 @@
                     if (args.render_mode === 'points') {
                         leds.positions.push(x, y, 0);
                         leds.sizes.push(radiusLED);
-                        leds.colors.push(...(new THREE.Color(ledWhite)).toArray());
+                        leds.colors.push(...(ledIntensities[0].toArray()));
                     } else {
-                        const led = new THREE.Mesh(new THREE.SphereGeometry(radiusLED, 8, 8), new THREE.MeshBasicMaterial({ color: ledWhite }));
+                        const led = new THREE.Mesh(new THREE.SphereGeometry(radiusLED, 8, 8), new THREE.MeshBasicMaterial({ color: ledIntensities[0] }));
                         led.position.set(x, y, 0);
                         lightboard.add(led);
                     }
@@ -193,12 +206,12 @@
                 const x = Math.cos(angle) * radiusBasis * args.lightstage.lightboard.radiusScalarColorLED;
                 const y = Math.sin(angle) * radiusBasis * args.lightstage.lightboard.radiusScalarColorLED;
                 if (args.render_mode === 'points') {
-                    let color = i % 2 === 0 ? ledWhite : ledColors[(i - 1) / 2 % 3];
+                    let color = i % 2 === 0 ? ledIntensities[0] : ledIntensities[1+(i - 1) / 2 % 3];
                     leds.positions.push(x, y, 0);
                     leds.sizes.push(radiusLED);
-                    leds.colors.push(...(new THREE.Color(color)).toArray());
+                    leds.colors.push(...(color.toArray()));
                 } else {
-                    const color = i % 2 === 0 ? { color: ledWhite } : { color: ledColors[(i - 1) / 2 % 3] };
+                    const color = i % 2 === 0 ? { color: ledIntensities[0] } : { color: ledIntensities[1+(i - 1) / 2 % 3] };
                     const led = new THREE.Mesh(new THREE.SphereGeometry(radiusLED, 8, 8), new THREE.MeshBasicMaterial(color));
                     led.position.set(x, y, 0);
                     lightboard.add(led);
@@ -211,7 +224,7 @@
                 const x = Math.cos(angle) * radiusBasis * args.lightstage.lightboard.radiusScalarDaughter;
                 const y = Math.sin(angle) * radiusBasis * args.lightstage.lightboard.radiusScalarDaughter;
                 for (let j = 0; j < 4; j++) {
-                    const color = ledColors[j];
+                    const color = ledIntensities[1+j];
             
                     // Calculate diamond offset positions using parameterized offsetDistance
                     let offsetX = 0;
@@ -230,7 +243,7 @@
                     if (args.render_mode === 'points') {
                         leds.positions.push(x + rotatedOffsetX, y + rotatedOffsetY, 0);
                         leds.sizes.push(radiusLED);
-                        leds.colors.push(...(new THREE.Color(color)).toArray());
+                        leds.colors.push(...(color).toArray());
                     } else {
                         const led = new THREE.Mesh(new THREE.SphereGeometry(radiusLED, 8, 8), new THREE.MeshBasicMaterial({ color }));
                         led.position.set(x + rotatedOffsetX, y + rotatedOffsetY, 0);
@@ -240,13 +253,21 @@
             }
             
             if (args.render_mode === 'points') {
-                leds = buildPoints(leds.positions, leds.sizes, leds.colors);
-                lightboard.add(leds);
+                let ledsGroup = buildPoints(leds.positions, leds.sizes, leds.colors);
+                ledsGroup.name = 'leds';
+                lightboard.add(ledsGroup);
+                lightboard.userData['leds'] = {
+                    positions: leds.positions,
+                    sizes: leds.sizes,
+                    colors: leds.colors,
+                }
             }
 
             // draw boarder of the hexagon
             const scalar = args.lightstage.lightboard.radiusScalarBoarder;
-            const hexagon = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(hexagonCornerVertices.map(v => new THREE.Vector3(scalar*v.x, scalar*v.y, 0))), new THREE.LineBasicMaterial({ color: 0xffffff }));
+            const hexagon = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(hexagonCornerVertices.map(v => new THREE.Vector3(scalar*v.x, scalar*v.y, 0))), new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1, transparent: true, opacity: 0.3 }));
+            hexagon.name = 'border';
+            hexagon.visible = args.lightstage.lightboard.show;
             lightboard.add(hexagon);
 
             return lightboard;
@@ -258,21 +279,49 @@
                 // remove all light boards and rig
                 scene.remove(scene.getObjectByName('lightboards'));
                 scene.remove(scene.getObjectByName('rig'));
+                args.lightstage.patterns.idx = 0 // reset pattern index
+            }
+
+            function getVertices(mesh) {
+                const position = geometry.attributes.position;
+                const vertices = [];
+                const uniquePositions = new Set();
+                
+                for (let i = 0; i < geometry.attributes.position.count; i++) {
+                    let vertex = new THREE.Vector3().fromBufferAttribute(geometry.attributes.position, i);
+                    let vertexKey = `${vertex.x},${vertex.y},${vertex.z}`;
+                    if (!uniquePositions.has(vertexKey)) {
+                        uniquePositions.add(vertexKey);
+                        vertices.push(vertex);
+                    }
+                }
+               
+               return vertices;
             }
 
             // Generate light board positions
             let geometry = new THREE.IcosahedronGeometry(args.lightstage.radius, args.lightstage.ledDensity-1);
-            const positions = [];
-            for (let i = 0; i < geometry.attributes.position.count; i++) {
-                let vertex = new THREE.Vector3().fromBufferAttribute(geometry.attributes.position, i);
-                positions.push(vertex);
-            }
+            const positions = getVertices(geometry);
+
+            // Convert to polar coordinates and sort
+            positions.sort((a, b) => {
+                if (Math.abs(a.z - b.z) > 0.01) {
+                    return b.z - a.z; // Sort by z-coordinate in descending order if z-coordinates are not equal
+                } else {
+                    // If z-coordinates are equal, sort by angle in the x-y plane
+                    const angleA = Math.atan2(a.x, a.y);
+                    const angleB = Math.atan2(b.x, b.y);
+                    return angleB - angleA;
+                }
+            });
+            
 
             // Add light boards to the scene
             var lightboards = new THREE.Group();
             lightboards.name = 'lightboards';
             positions.forEach(pos => {
-                const snowflake = createLightBoard();
+                let ledIntensities = ledColors.map((c, i) => (new THREE.Color(c)));
+                const snowflake = createLightBoard(ledIntensities);
                 snowflake.position.copy(pos);
                 snowflake.lookAt(0, 0, 0);
                 lightboards.add(snowflake);
@@ -281,7 +330,7 @@
 
             // light stage rig
             var geo = new THREE.EdgesGeometry( geometry ); // or WireframeGeometry( geometry )
-            var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 1, transparent: true } );
+            var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 2, transparent: true, opacity: 0.25} );
             wireframe = new THREE.LineSegments( geo, mat );
             wireframe.name = 'rig';
             wireframe.visible = args.lightstage.rig.show;
@@ -424,6 +473,79 @@
 
         }
 
+        function updatePattern() {
+            let lightboards = scene.getObjectByName('lightboards');
+            let off = 0.1;
+            let curr = new Date().getTime();
+            if (args.lightstage.patterns.active === 'olat') {
+                
+                // reset all lights to off
+                if (args.lightstage.patterns.idx == 0) {
+                    lightboards.children.forEach((lightboard, i) => {
+                        let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
+                        let leds_init = lightboard.userData['leds'].colors;
+                        for (let j = 0; j < leds.count; j++) {
+                            leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                        }
+                        leds.needsUpdate = true;
+                    });
+                }
+
+                if (curr - args.lightstage.patterns.last_update > (1000/args.lightstage.patterns.fps)) {
+                    args.lightstage.patterns.last_update = curr;
+                    
+                    // update lights
+                    lightboards.children.forEach((lightboard, i) => {
+                        let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
+                        let leds_init = lightboard.userData['leds'].colors;
+                        if (i == args.lightstage.patterns.idx) {
+                            for (let j = 0; j < leds.count; j++) {
+                                if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
+                                    // switch all white LEDs on
+                                    leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                                } else {
+                                    leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                                }
+                            }
+                        } else {
+                            // switch all white LEDs off
+                            for (let j = 0; j < leds.count; j++) {
+                                if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
+                                    leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                                }
+                            }
+                        }
+                        leds.needsUpdate = true;
+                    });
+                    args.lightstage.patterns.idx = (args.lightstage.patterns.idx+1) % lightboards.children.length;
+                }
+            } else if (args.lightstage.patterns.active == 'warmup') {
+                if (args.lightstage.patterns.idx >= 0) {
+                    lightboards.children.forEach((lightboard, i) => {
+                        let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
+                        let leds_init = lightboard.userData['leds'].colors;
+                        for (let j = 0; j < leds.count; j++) {
+                            leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                        }
+                        leds.needsUpdate = true;
+                    });
+                    args.lightstage.patterns.idx = -1; // set this to static, other dynamic patterns will automatically make this positive
+                }
+            } else if (args.lightstage.patterns.active == 'off') {
+                if (args.lightstage.patterns.idx >= 0) {
+                    lightboards.children.forEach((lightboard, i) => {
+                        let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
+                        let leds_init = lightboard.userData['leds'].colors;
+                        for (let j = 0; j < leds.count; j++) {
+                            leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                        }
+                        leds.needsUpdate = true;
+                    });
+                    args.lightstage.patterns.idx = -1; // set this to static, other dynamic patterns will automatically make this positive
+                }
+            }
+        }
+
         function setupOrbitControls() {
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = args.controls.enableDamping; // Enable inertia
@@ -444,6 +566,7 @@
             renderer.render(scene, camera);
             controls.update();
 
+
             // updates
             if (wireframe) {
                 wireframe.visible = args.lightstage.rig.show;
@@ -462,6 +585,8 @@
             if (sphereInstance) {
                 updateRays();
             }
+
+            updatePattern();
         }
 
         function onclick_btn_reset() {
@@ -519,8 +644,9 @@
             render_mode: render_mode,
             lightstage: {
                 radius: 1.5,
-                ledDensity: 2,
+                ledDensity: 6,
                 lightboard: {
+                    show: true,
                     radiusWhiteLED: 0.05,
                     radiusScalarColorLED: 0.5, // the radius scalar * radiusWhiteLED is the radius of the hexogon of the color LED, which is fixed scalar due to equilateral triangle,
                     radiusScalarBoarder: 1.5, // the radius scalar * radiusWhiteLED is the radius of the hexogon of main board, fixed scalar due to equilateral triangle,
@@ -534,12 +660,18 @@
                 rig: {
                     show: false,
                     flashSpeed: 1,  // Speed of the light stage rig flashing
+                },
+                patterns: {
+                    active: 'olat',
+                    idx: 0,
+                    last_update: new Date().getTime(),
+                    fps: 30,
                 }
             },
             controls: {
                 enableDamping: true,
                 dampingFactor: 0.05,
-                autoRotate: true,
+                autoRotate: false,
                 autoRotateSpeed: 0.1,
                 reset: function() {},
             },
@@ -558,8 +690,7 @@
         args.controls.reset = function(){};
 
         // Colors for the lights
-        const ledWhite = 0xffffff;
-        const ledColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffa500]; // Red, Green, Blue, Amber
+        const ledColors = [0xffffff, 0xff0000, 0x00ff00, 0x0000ff, 0xffa500]; // white, Red, Green, Blue, Amber
 
         // Setup light stage
         init();
