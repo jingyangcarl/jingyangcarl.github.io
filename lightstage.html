@@ -62,27 +62,28 @@
             gui_ls.open();
             gui_ls.add( args.lightstage, 'ledDensity', 1, 10, 1 ).name('Light Density').onChange(v => setupLightStage(true)).listen();
             gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => setupLightStage(true)).listen();
-            gui_ls.add( args.lightstage.rig, 'show').name('Show Rig').onChange(v => wireframe.visible = v).listen();
 
             let gui_ls_lightboard = gui_ls.addFolder('Light Board');
-            gui_ls_lightboard.open();
-            gui_ls_lightboard.add( args.lightstage.lightboard, 'show').name('Show Light Board').onChange(v => {
-                scene.getObjectByName('lightboards').visible = v;
-            }).listen();
+            // gui_ls_lightboard.open();
+            gui_ls_lightboard.add( args.lightstage.lightboard, 'show').name('Show Light Board').onChange(v => lightboards.visible = v).listen();
             gui_ls_lightboard.add( args.lightstage.lightboard.boundary, 'show').name('Show Boundary').onChange(v => {
-                scene.getObjectByName('lightboards').children.forEach(lightboard => 
+                lightboards.children.forEach(lightboard => 
                     lightboard.children.forEach(x => {
                         if (x.name === 'boundary') x.visible = v;
                     }));
             }).listen();
             gui_ls_lightboard.add(args.lightstage.lightboard.leds, 'show').name('Show LEDs').onChange(v => {
-                scene.getObjectByName('lightboards').children.forEach(lightboard => 
+                lightboards.children.forEach(lightboard => 
                     lightboard.children.forEach(x => {
                         if (x.name === 'leds') x.visible = v;
                     }));
             }).listen();
             gui_ls_lightboard.add( args.lightstage.lightboard, 'radiusWhiteLED', 0.01, 0.1, 0.01).name('Light Board Radius').onChange(v => setupLightStage(true)).listen();
 
+            let gui_ls_rig = gui_ls.addFolder('Rig');
+            // gui_ls_rig.open();
+            gui_ls_rig.add( args.lightstage.rig, 'show').name('Show Rig').onChange(v => rig.visible = v).listen();
+            gui_ls_rig.add( args.lightstage.rig, 'flashSpeed', 0, 5, 0.1).name('Flash Speed').listen();
 
             let gui_ls_patterns = gui_ls.addFolder('Patterns');
             gui_ls_patterns.open();
@@ -91,14 +92,14 @@
             gui_ls_patterns.add(args.lightstage.patterns, 'idx').name('Pattern Index').listen().disable();
 
             let gui_controls = gui.addFolder('Controls');
-            gui_controls.open();
+            // gui_controls.open();
             gui_controls.add( args.controls, 'autoRotate').name('Camera Auto Rotation').onChange(v => controls.autoRotate = v).listen();
             gui_controls.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Camera Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
             gui_controls.add( args.controls, 'autoRotate_mesh').name('Mesh Auto Rotation').listen();
             gui_controls.add( args.controls, 'autoRotate_mesh_speed', 0, 0.1, 0.01).name('Mesh Rotate Speed').listen();
 
             let gui_render = gui.addFolder('Render');
-            gui_render.open();
+            // gui_render.open();
             gui_render.add( args.render.rayCaster, 'count', 0, 100, 1).name('Ray Count').listen();
             gui_render.add( args.render.rayCaster, 'displayHelper').name('Show Helper').listen();
             gui_render.add( args.render.rayCaster, 'helperDepth', 1, 20, 1).name('Helper Depth').onChange(v => {
@@ -314,8 +315,8 @@
 
             if (reset) {
                 // remove all light boards and rig
-                scene.remove(scene.getObjectByName('lightboards'));
-                scene.remove(scene.getObjectByName('rig'));
+                scene.remove(lightboards);
+                scene.remove(rig);
                 args.lightstage.patterns.idx = 0 // reset pattern index
             }
 
@@ -354,7 +355,7 @@
             
 
             // Add light boards to the scene
-            var lightboards = new THREE.Group();
+            lightboards = new THREE.Group();
             lightboards.name = 'lightboards';
             positions.forEach(pos => {
                 let ledIntensities = ledColors.map((c, i) => (new THREE.Color(c)));
@@ -368,12 +369,12 @@
             scene.add(lightboards);
 
             // light stage rig
-            var geo = new THREE.EdgesGeometry( geometry ); // or WireframeGeometry( geometry )
-            var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 2, transparent: true, opacity: 0.25} );
-            wireframe = new THREE.LineSegments( geo, mat );
-            wireframe.name = 'rig';
-            wireframe.visible = args.lightstage.rig.show;
-            scene.add( wireframe );
+            var geo = new THREE.EdgesGeometry( geometry ); // or rigGeometry( geometry )
+            var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 2, transparent: true, opacity: args.lightstage.rig.opacity} );
+            rig = new THREE.LineSegments( geo, mat );
+            rig.name = 'rig';
+            rig.visible = args.lightstage.rig.show;
+            scene.add( rig );
 
         }
 
@@ -536,7 +537,6 @@
         }
 
         function updatePattern() {
-            let lightboards = scene.getObjectByName('lightboards');
             let off = 0.1;
             let curr = new Date().getTime();
             if (args.lightstage.patterns.active === 'olat') {
@@ -660,9 +660,9 @@
             labelRenderer.render( scene, camera );
 
             // updates
-            if (wireframe) {
-                wireframe.visible = args.lightstage.rig.show;
-                // wireframe.material.opacity = (1 + Math.sin(new Date().getTime() * .0025 * args.lightstage.rig.flashSpeed)); // change opacity of the wireframe
+            if (rig) {
+                rig.visible = args.lightstage.rig.show;
+                rig.material.opacity = args.lightstage.rig.opacity * (1 + Math.sin(new Date().getTime() * .0025 * args.lightstage.rig.flashSpeed)); // change opacity of the rig
             }
         
             if (helper) {
@@ -731,7 +731,7 @@
 
         // Global variables
         let scene, camera, cameraObject, renderer, labelRenderer, gui, stats;
-        let wireframe;
+        let rig, lightboards;
         let controls;
         let mesh, helper, bvh;
         let sphereInstance, lineSegments, sphereLabels;
@@ -771,7 +771,8 @@
                 },
                 rig: {
                     show: false,
-                    flashSpeed: 1,  // Speed of the light stage rig flashing
+                    opacity: 0.25,
+                    flashSpeed: 0,  // Speed of the light stage rig flashing
                 },
                 patterns: {
                     active: 'olat',
