@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="description"
+        content="Light Sampling Field and BRDF Representation for Physically-based Neural Rendering">
+    <meta name="keywords" content="Material Acquisition">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Authoring Materials for Physically-based Rendering</title>
+
+    <script>
+        window.dataLayer = window.dataLayer || [];
+
+        function gtag() {
+            dataLayer.push(arguments);
+        }
+
+        gtag('js', new Date());
+
+        gtag('config', 'G-PYVRSFMDRL');
+    </script>
+
+    <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet">
+
+    <link rel="stylesheet" href="../static/css/bulma.min.css">
+    <link rel="stylesheet" href="../static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="../static/css/bulma-slider.min.css">
+    <link rel="stylesheet" href="../static/css/fontawesome.all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+    <link rel="stylesheet" href="../static/css/index.css">
+    <link rel="icon" href="../static/images/cityu.png">
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script defer src="../static/js/fontawesome.all.min.js"></script>
+    <script src="../static/js/bulma-carousel.min.js"></script>
+    <script src="../static/js/bulma-slider.min.js"></script>
+    <script src="../static/js/index.js"></script>
+</head>
+
+<body>
+
+    <nav class="navbar" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+            </a>
+        </div>
+        <div class="navbar-menu">
+            <div class="navbar-start" style="flex-grow: 1; justify-content: center;">
+                <a class="navbar-item" href="https://jingyangcarl.com">
+                    <span class="icon">
+                        <i class="fas fa-home"></i>
+                    </span>
+                </a>
+
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">
+                        More Research and Projects
+                    </a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" href="https://jingyangcarl.github.io/LightSamplingField/">
+                            ICLR 2023 - Light Sampling Field
+                        </a>
+                        <a class="navbar-item" href="https://github.com/FreedomGu/DiffPortrait3D">
+                            CVPR 2024 - DiffPortrait3D
+                        </a>
+                        <a class="navbar-item" href="https://jingyangcarl.github.io/PolarizedReflectanceField">
+                            Polarized Reflectance Field
+                        </a>
+                        <a class="navbar-item" href="https://jingyangcarl.github.io/MaterialAuthoring">
+                            Material Authoring
+                        </a>
+                        <a class="navbar-item" href="https://papercopilot.com">
+                            Paper Copilot (1.2M+ views)
+                        </a>
+                        <a class="navbar-item" href="https://jingyangcarl.github.io">
+                            Virtual Light Stage
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div class="hero-body">
+            <div class="container is-max-desktop">
+                <div class="columns is-centered">
+                    <div class="column has-text-centered">
+                        <h1 class="title is-1 publication-title">Authoring Materials for Physically-based Rendering</h1>
+                        <h1 class="title is-3">Under Submission</h1>
+                        <div class="is-size-5 publication-authors">
+                        </div>
+                        <div class="column has-text-centered">
+                            <div class="publication-links">
+                                <!-- PDF Link. -->
+                                <span class="link-block">
+                                    <a href="" class="external-link button is-normal is-rounded is-dark">
+                                        <span class="icon">
+                                            <i class="fas fa-file-pdf"></i>
+                                        </span>
+                                        <span>Paper</span>
+                                    </a>
+                                </span>
+                                <span class="link-block">
+                                    <a href="" class="external-link button is-normal is-rounded is-dark">
+                                        <span class="icon">
+                                            <i class="ai ai-arxiv"></i>
+                                        </span>
+                                        <span>arXiv</span>
+                                    </a>
+                                </span>
+                                <!-- Video Link. -->
+                                <span class="link-block">
+                                    <a href="" class="external-link button is-normal is-rounded is-dark">
+                                        <span class="icon">
+                                            <i class="fab fa-youtube"></i>
+                                        </span>
+                                        <span>Video</span>
+                                    </a>
+                                </span>
+                                <!-- Code Link. -->
+                                <span class="link-block">
+                                    <a href="" class="external-link button is-normal is-rounded is-dark">
+                                        <span class="icon">
+                                            <i class="fab fa-github"></i>
+                                        </span>
+                                        <span>Github</span>
+                                    </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Teaser. -->
+    <section class="hero teaser">
+        <div class="container is-max-desktop">
+            <div class="hero-body">
+                <div>
+                    <h2 class="subtitle has-text" style="text-align: center"><span class="dnerf">Polarized Reflectance
+                            Field Capture Examples</span></h2>
+                    <div style="text-align: center">Objects are captured from multiple views under
+                        cross/parallel-polarized OLAT, each with 346 valid lighting directions.</div>
+                    <video controls loop="true" muted="true" autoplay="true">
+                        <source
+                            src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/PolarizedReflectanceField/polarized%20reflectance%20field%20database.mp4"
+                            type="video/mp4">
+                    </video>
+                </div>
+                <div>
+                    <h2 class="subtitle has-text" style="text-align: center"><span class="dnerf">Optimized Material
+                            Examplesn (Will update the following video with text later)</span></h2>
+                    <div style="text-align: center">The optimized material includes diffuse albedo, diffuse normal,
+                        specular albedo, specular normal, anisotropy, and roughness. It also measures diffuse occlusion,
+                        diffuse inter-reflection, specular occlusion, and specular inter-reflection.</div>
+                    <video controls loop="true" muted="true" autoplay="true">
+                        <source
+                            src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/PolarizedReflectanceField/material%20database.mp4"
+                            type="video/mp4">
+                    </video>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <section class="section">
+        <div class="container is-max-desktop">
+
+            <!-- Paper video. -->
+
+            <!-- Abstract. -->
+
+            <!-- Pipeline. -->
+
+            <!-- Light Sampling Field. -->
+
+            <!-- Qualitative Results -->
+
+            <!-- Results. -->
+
+        </div>
+    </section>
+
+
+
+    <!-- Cite. -->
+
+
+    <footer class="footer">
+        <div class="container">
+
+            <div class="columns is-centered">
+                <div class="column is-8">
+                    <div class="content">
+                        <p>
+                            This website is licensed under a <a rel="license"
+                                href="http://creativecommons.org/licenses/by-sa/4.0/">Creative
+                                Commons Attribution-ShareAlike 4.0 International License</a>.
+
+                            The source code for the website
+                            was taken from <a href="https://github.com/nerfies/nerfies.github.io">here</a>. We
+                            appreciate the
+                            authors sharing the templates with us.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </footer>
+
+</body>
+
+</html>
