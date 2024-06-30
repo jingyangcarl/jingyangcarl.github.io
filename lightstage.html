@@ -42,7 +42,7 @@
             // renderer = new WebGPURenderer();
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
-            camera.position.z = 3.5;
+            camera.position.z = 3;
         }
 
         function setupGUI() {
@@ -50,8 +50,9 @@
 
             let gui_ls = gui.addFolder('Light Stage Setting');
             gui_ls.open();
-            gui_ls.add( args.lightstage, 'ledDensity', 1, 10, 1 ).onChange(v => setupLightStage(true)).listen();
+            gui_ls.add( args.lightstage, 'ledDensity', 1, 10, 1 ).name('Light Density').onChange(v => setupLightStage(true)).listen();
             gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => setupLightStage(true)).listen();
+            gui_ls.add( args.lightstage.rig, 'show').name('Show Rig').onChange(v => wireframe.visible = v).listen();
 
             let gui_ls_lightboard = gui_ls.addFolder('Light Board');
             gui_ls_lightboard.open();
@@ -61,11 +62,12 @@
                         if (x.name === 'border') x.visible = v;
                     }));
             }).listen();
-            gui_ls_lightboard.add( args.lightstage.lightboard, 'radiusWhiteLED', 0.01, 0.1, 0.01).name('White LED Radius').onChange(v => setupLightStage(true)).listen();
+            gui_ls_lightboard.add(args.lightstage.lightboard.leds, 'show').name('Show LEDs').onChange(v => {
+                scene.getObjectByName('lightboards').children.forEach(lightboard => 
+                    lightboard.getObjectByName('leds').visible = v);
+            }).listen();
+            gui_ls_lightboard.add( args.lightstage.lightboard, 'radiusWhiteLED', 0.01, 0.1, 0.01).name('Light Board Radius').onChange(v => setupLightStage(true)).listen();
 
-            let gui_ls_rig = gui_ls.addFolder('Rig');
-            gui_ls_rig.open();
-            gui_ls_rig.add( args.lightstage.rig, 'show').name('Show Rig').onChange(v => wireframe.visible = v).listen();
 
             let gui_ls_patterns = gui_ls.addFolder('Patterns');
             gui_ls_patterns.open();
@@ -75,8 +77,10 @@
 
             let gui_controls = gui.addFolder('Controls');
             gui_controls.open();
-            gui_controls.add( args.controls, 'autoRotate').name('Enable Auto Rotation').onChange(v => controls.autoRotate = v).listen();
-            gui_controls.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
+            gui_controls.add( args.controls, 'autoRotate').name('Camera Auto Rotation').onChange(v => controls.autoRotate = v).listen();
+            gui_controls.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Camera Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
+            gui_controls.add( args.controls, 'autoRotate_mesh').name('Mesh Auto Rotation').listen();
+            gui_controls.add( args.controls, 'autoRotate_mesh_speed', 0, 0.1, 0.01).name('Mesh Rotate Speed').listen();
 
             let gui_render = gui.addFolder('Render');
             gui_render.open();
@@ -335,6 +339,7 @@
             positions.forEach(pos => {
                 let ledIntensities = ledColors.map((c, i) => (new THREE.Color(c)));
                 const snowflake = createLightBoard(ledIntensities);
+                snowflake.visible = args.lightstage.lightboard.show;
                 snowflake.position.copy(pos);
                 snowflake.lookAt(0, 0, 0);
                 lightboards.add(snowflake);
@@ -597,8 +602,8 @@
                 helper.visible = args.render.rayCaster.displayHelper;
             }
 
-            if (mesh) {
-                mesh.rotation.y += 0.002;
+            if (mesh && args.controls.autoRotate_mesh) {
+                mesh.rotation.y += args.controls.autoRotate_mesh_speed;
                 mesh.updateMatrixWorld();
             }
 
@@ -664,7 +669,7 @@
             render_mode: render_mode,
             lightstage: {
                 radius: 1.5,
-                ledDensity: 6,
+                ledDensity: 5,
                 lightboard: {
                     show: true,
                     radiusWhiteLED: 0.05,
@@ -674,7 +679,8 @@
                     radiusScalarDautherOffsetX: 0.3, // Parameterized offset distance towards normal direction
                     radiusScalarDautherOffsetY: 0.15,// Parameterized offset distance towards tangent direction
                     leds: {
-                        radius: render_mode === 'points' ? 10 : 0.01,
+                        show: true,
+                        radius: render_mode === 'points' ? 5 : 0.01,
                     }
                 },
                 rig: {
@@ -682,7 +688,7 @@
                     flashSpeed: 1,  // Speed of the light stage rig flashing
                 },
                 patterns: {
-                    active: 'olat',
+                    active: 'warmup',
                     idx: 0,
                     last_update: new Date().getTime(),
                     fps: 30,
@@ -694,6 +700,8 @@
                 autoRotate: false,
                 autoRotateSpeed: 0.1,
                 reset: function() {},
+                autoRotate_mesh: true,
+                autoRotate_mesh_speed: 0.01,
             },
             render: {
                 rayCaster: {
