@@ -3,8 +3,7 @@
 
 <head>
   <meta charset="utf-8">
-  <meta name="description"
-    content="Light Sampling Field and BRDF Representation for Physically-based Neural Rendering">
+  <meta name="description" content="Light Sampling Field and BRDF Representation for Physically-based Neural Rendering">
   <meta name="keywords" content="Material Acquisition">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Light Sampling Field and BRDF Representation for Physically-based Neural Rendering</title>
@@ -40,14 +39,58 @@
 
 <body>
 
+  <nav class="navbar" role="navigation" aria-label="main navigation">
+    <div class="navbar-brand">
+      <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </a>
+    </div>
+    <div class="navbar-menu">
+      <div class="navbar-start" style="flex-grow: 1; justify-content: center;">
+        <a class="navbar-item" href="https://jingyangcarl.com">
+          <span class="icon">
+            <i class="fas fa-home"></i>
+          </span>
+        </a>
 
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">
+            More Research and Projects
+          </a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="https://jingyangcarl.github.io/LightSamplingField/">
+              ICLR 2023 - Light Sampling Field
+            </a>
+            <a class="navbar-item" href="https://github.com/FreedomGu/DiffPortrait3D">
+              CVPR 2024 - DiffPortrait3D
+            </a>
+            <a class="navbar-item" href="https://jingyangcarl.github.io/PolarizedReflectanceField">
+              Polarized Reflectance Field
+            </a>
+            <a class="navbar-item" href="https://jingyangcarl.github.io/MaterialAuthoring">
+              Material Authoring
+            </a>
+            <a class="navbar-item" href="https://papercopilot.com">
+              Paper Copilot (1.2M+ views)
+            </a>
+            <a class="navbar-item" href="https://jingyangcarl.github.io">
+              Virtual Light Stage
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
 
   <section class="hero">
     <div class="hero-body">
       <div class="container is-max-desktop">
         <div class="columns is-centered">
           <div class="column has-text-centered">
-            <h1 class="title is-1 publication-title">Light Sampling Field and BRDF Representation for Physically-based Neural Rendering</h1>
+            <h1 class="title is-1 publication-title">Light Sampling Field and BRDF Representation for Physically-based
+              Neural Rendering</h1>
             <h1 class="title is-3">ICLR 2023</h1>
             <div class="is-size-5 publication-authors">
               <span class="author-block">
@@ -114,19 +157,6 @@
   </section>
 
 
-  <!-- <section class="hero is-light is-small">
-  <div class="hero-body">
-    <div class="container">
-      <div id="results-carousel" class="carousel results-carousel">
-        <div class="item item-std1">
-          <img src="./static/video/std1.gif">
-        </div>
-      </div>
-    </div>
-  </div>
-</section> -->
-
-
   <!-- Teaser. -->
   <section class="hero teaser">
     <div class="container is-max-desktop">
@@ -136,17 +166,10 @@
             src="https://raw.githubusercontent.com/jingyangcarl/LightSamplingField/main/assets/Relighting_via_HDRI.gif"
             alt="teaser" class="center">
         </div>
-        <!-- <h2 class="subtitle has-text center">
-          <span class="dnerf">Relighting via HDRI as Global Lighting
-        </h2> -->
         <div>
           <img src="https://raw.githubusercontent.com/jingyangcarl/LightSamplingField/main/assets/dynamic_sequences.gif"
             alt="teaser" class="center">
         </div>
-        <!-- <h2 class="subtitle has-text">
-          <span class="dnerf">Multiview Relighting on Dynamic Sequences
-        </h2> -->
-
       </div>
     </div>
   </section>
@@ -154,7 +177,6 @@
 
   <section class="section">
     <div class="container is-max-desktop">
-      <!-- <div class="container"> -->
 
       <!-- Paper video. -->
       <div class="columns is-centered has-text-centered">
@@ -162,11 +184,8 @@
           <br />
           <h2 class="title is-3">Youtube Video</h2>
           <div class="publication-video">
-
-            <!-- <iframe src="https://www.youtube.com/watch?v=at_42ekU0I0"
-                  frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe> -->
-            <iframe width="400" height="300" src="https://www.youtube.com/embed/qpIgS11DlJE" title="YouTube video player"
-              frameborder="0"
+            <iframe width="400" height="300" src="https://www.youtube.com/embed/qpIgS11DlJE"
+              title="YouTube video player" frameborder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowfullscreen>
             </iframe>
@@ -177,7 +196,6 @@
 
       <!-- Abstract. -->
       <div class="columns is-centered has-text-centered">
-        <!-- <div class="column is-four-fifths"> -->
         <div class="column is-full-width">
           <h2 class="title is-3">Abstract</h2>
           <div class="content has-text-justified">
@@ -257,211 +275,9 @@
             src="https://raw.githubusercontent.com/jingyangcarl/LightSamplingField/main/assets/qualitative_lightstage.jpg"
             alt="method" style="width:100%; ">
           <div class="content has-text-justified">
-            <!-- <p> -->
-              <!-- We use various densities of sampling to bring attention to locations with data as in the
-              Light Sampling Field.
-            </p> -->
           </div>
         </div>
       </div>
-
-      <!-- Results. -->
-      <!-- <div class="columns is-centered has-text-centered">
-        <div class="container is-max-desktop">
-          <br />
-          <h2 class="title is-3">More Results</h2>
-
-          <h3 class="title is-5" style="text-align:left"></h3>
-          <div id="results-carousel" class="carousel results-carousel">
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_shuquan_rgb.gif"
-                style="width:40%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_shuquan_van_rgb.gif"
-                style="width:40%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_shuquan_bear_rgb.gif"
-                style="width:40%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_shuquan_lord_rgb.gif"
-                style="width:40%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_shuquan_zombie_rgb.gif"
-                style="width:40%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_shuquan_fauvism_rgb.gif"
-                style="width:40%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_shuquan_pixar_rgb.gif"
-                style="width:40%; ">
-            </div>
-          </div>
-
-          <br />
-          <h3 class="title is-5" style="text-align:left"></h3>
-          <div id="results-carousel" class="carousel results-carousel">
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_girl_rgb.gif"
-                style="width:50%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_girl_van_rgb.gif"
-                style="width:50%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_girl_elf_rgb.gif"
-                style="width:50%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_girl_fauvism_rgb.gif"
-                style="width:50%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_girl_lord_rgb.gif"
-                style="width:50%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_girl_edvard_rgb.gif"
-                style="width:50%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/human/volsdf_girl_pixar_rgb.gif"
-                style="width:50%; ">
-            </div>
-          </div>
-
-          <br />
-          <h3 class="title is-5" style="text-align:left"></h3>
-          <div id="results-carousel" class="carousel results-carousel">
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/room.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/room_cubism.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/room_pixar.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/room_white_feather.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/room_colorful_galaxy.gif"
-                style="width:75%; ">
-            </div>
-          </div>
-
-          <br />
-          <h3 class="title is-5" style="text-align:left"></h3>
-          <div id="results-carousel" class="carousel results-carousel">
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/horn.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/horns_The_Starry_Night.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/horns_crystal.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/horns_checkerboard.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/horns_a_mosaic_design.gif"
-                style="width:75%; ">
-            </div>
-          </div>
-
-          <br />
-          <h3 class="title is-5" style="text-align:left"></h3>
-          <div id="results-carousel" class="carousel results-carousel">
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/fern.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/fern_crystal.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/fern_cubism_painting.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/fern_The_Starry_Night.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/fern_a_mosaic_design.gif"
-                style="width:75%; ">
-            </div>
-          </div>
-
-          <br />
-          <h3 class="title is-5" style="text-align:left"></h3>
-          <div id="results-carousel" class="carousel results-carousel">
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/flower.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/flower_crystal.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/flower_cubism_painting.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/flower_The_Starry_Night.gif"
-                style="width:75%; ">
-            </div>
-            <div class="item" style="margin: 0px; overflow: auto; border:0px; text-align: center;">
-              <img
-                src="https://raw.githubusercontent.com/cassiePython/nerfart-pages/master/scenes/flower_a_mosaic_design.gif"
-                style="width:75%; ">
-            </div>
-          </div>
-
-        </div>
-      </div> -->
 
     </div>
   </section>
@@ -473,14 +289,14 @@
       <h2 class="title">BibTeX</h2>
       <pre>
         <code>
-    @inproceedings {
-      yang2023light,
-      title       = {Light Sampling Field and {BRDF} Representation for Physically-based Neural Rendering},
-      author      = {Jing Yang and Hanyuan Xiao and Wenbin Teng and Yunxuan Cai and Yajie Zhao},
-      booktitle   = {The Eleventh International Conference on Learning Representations },
-      year        = {2023},
-      url         = {https://openreview.net/forum?id=yYEb8v65X8}
-    }
+          @inproceedings {
+            yang2023light,
+            title       = {Light Sampling Field and {BRDF} Representation for Physically-based Neural Rendering},
+            author      = {Jing Yang and Hanyuan Xiao and Wenbin Teng and Yunxuan Cai and Yajie Zhao},
+            booktitle   = {The Eleventh International Conference on Learning Representations },
+            year        = {2023},
+            url         = {https://openreview.net/forum?id=yYEb8v65X8}
+          }
         </code>
       </pre>
     </div>
@@ -490,15 +306,6 @@
   <footer class="footer">
     <div class="container">
 
-      <!-- <div class="content has-text-centered">
-        <a class="icon-link" href="">
-          <i class="fas fa-file-pdf"></i>
-        </a>
-        <a class="icon-link" href="https://github.com/FDNeRF/FDNeRF" class="external-link" disabled>
-          <i class="fab fa-github"></i>
-        </a>
-      </div> -->
-
       <div class="columns is-centered">
         <div class="column is-8">
           <div class="content">
@@ -507,8 +314,8 @@
                 href="http://creativecommons.org/licenses/by-sa/4.0/">Creative
                 Commons Attribution-ShareAlike 4.0 International License</a>.
 
-              The <a href="https://github.com/nerfies/nerfies.github.io">source code</a> for the website
-              was taken from <a href="https://cassiepython.github.io/nerfart/index.html">NeRF-Art</a>. We appreciate the
+              The source code for the website
+              was taken from <a href="https://github.com/nerfies/nerfies.github.io">here</a>. We appreciate the
               authors sharing the templates with us.
             </p>
           </div>
