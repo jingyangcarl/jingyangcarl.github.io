@@ -670,8 +670,8 @@
                 if (curr - args.lightstage.patterns.last_update > (1000/args.lightstage.patterns.fps)) {
                     args.lightstage.patterns.last_update = curr;
 
-                    let n_all_white = args.lightstage.patterns.fps / 2;
-                    let n_all_off = args.lightstage.patterns.fps / 2;
+                    let n_all_white = args.lightstage.patterns.fps; // 1 second all white
+                    let n_all_off = args.lightstage.patterns.fps / 2; // 0.5 second all off
                     
                     // update lights
                     lightboards.children.forEach((lightboard, i) => {
