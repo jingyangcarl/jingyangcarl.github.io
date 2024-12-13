@@ -103,7 +103,8 @@
             <div class="container is-max-desktop">
                 <div class="columns is-centered">
                     <div class="column has-text-centered">
-                        <h1 class="title is-1 publication-title">RelightableStudio: Learnable Light Transport via Deformable Gaussians and
+                        <h1 class="title is-1 publication-title">RelightableStudio: Learnable Light Transport via
+                            Deformable Gaussians and
                             Spotlights for Physically-based Inverse Rendering</h1>
                         <h1 class="title is-3">Under Submission</h1>
                         <div class="is-size-5 publication-authors">
@@ -154,18 +155,20 @@
 
 
     <!-- Teaser. -->
-    <!-- <section class="hero teaser">
+    <section class="hero teaser">
         <div class="container is-max-desktop">
-            <div class="hero-body">
-                <div>
-                    <div>
-                        <img src="https://github.com/jingyangcarl/jingyangcarl.github.io/blob/master/MaterialAuthoring/teaser.v5.jpg?raw=true"
-                            alt="teaser" class="center">
-                    </div>
-                </div>
-            </div>
+            <h2 class="subtitle has-text" style="text-align: center">
+                <span class="dnerf">
+                    Material Decomposition and Accurate Lighting Control
+                </span>
+            </h2>
+            <video controls loop="true" muted="true" autoplay="true">
+                <source
+                    src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/RelightableStudio/supp_no_cover_2x.mp4"
+                    type="video/mp4">
+            </video>
         </div>
-    </section> -->
+    </section>
 
 
     <section class="section">
@@ -174,6 +177,30 @@
             <!-- Paper video. -->
 
             <!-- Abstract. -->
+            <div class="columns is-centered has-text-centered">
+                <div class="column is-full-width">
+                    <h2 class="title is-3">Abstract</h2>
+                    <div class="content has-text-justified">
+                        <p>
+                            Neural radiance representations are increasingly popular in performance capture and virtual
+                            production for their cost-effectiveness and photorealistic quality. However, there remains a
+                            significant gap between the radiance field rendering and physically-based rendering (PBR)
+                            approaches in their ability to support post-production lighting adjustments. Notably,
+                            existing neural radiance field-based approaches often rely on global illumination that does
+                            not accurately capture lighting conditions in controlled studio environments. In this paper,
+                            we introduce a novel physically-based rendering (PBR) framework designed for relighting
+                            dynamic volumetric scenes. Our approach models lighting conditions using learnable
+                            spotlights and employs deformable Gaussian representations for accurate reflectance layer
+                            decomposition and precise lighting control. We integrate learnable light transport to
+                            efficiently compute visibility and occlusion with learned lighting and material properties.
+                            Extensive experiments show that RelightableStudio achieves state-of-the-art performance in
+                            material and lighting decomposition, relighting fidelity, and novel view synthesis. This
+                            framework offers a compact, end-to-end, and editable representation, optimized for low-cost,
+                            high-quality video post-production in studio environments.
+                        </p>
+                    </div>
+                </div>
+            </div>
 
             <!-- Pipeline. -->
 

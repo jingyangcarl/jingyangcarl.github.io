@@ -105,9 +105,23 @@
                     <div class="column has-text-centered">
                         <h1 class="title is-1 publication-title">Acquisition of Spatially-Varying Reflectance and
                             Surface Normals via Polarized Reflectance Fields</h1>
-                        <h1 class="title is-3">Under Submission</h1>
+                        <h1 class="title is-3"></h1>
                         <div class="is-size-5 publication-authors">
+                            <span class="author-block">
+                                <a href="https://jingyangcarl.com">Jing Yang</a><sup>1</sup>,</span>
+                            <span class="author-block">
+                                <a href="">Pratusha Bhuvana Prasad</a><sup>1</sup>,</span>
+                            <span class="author-block">
+                                <a href="">Qing Zhang</a><sup>2</sup>,</span>
+                            <span class="author-block">
+                                <a href="https://www.yajie-zhao.com/">Yajie Zhao</a><sup>1</sup>,</span>
                         </div>
+
+                        <div class="is-size-5 publication-authors">
+                            <span class="author-block"><sup>1</sup>University of Southern California</span>
+                            <span class="author-block"><sup>2</sup>Sony R&D Center US</span>
+                        </div>
+
                         <div class="column has-text-centered">
                             <div class="publication-links">
                                 <!-- PDF Link. -->
@@ -158,34 +172,12 @@
         <div class="container is-max-desktop">
             <div class="hero-body">
                 <div>
-                    <h2 class="subtitle has-text" style="text-align: center"><span class="dnerf">Overview of the scanned objects</span></h2>
+                    <h2 class="subtitle has-text" style="text-align: center"><span class="dnerf">Comparison with the
+                            acquisition from Ma et al. 07 via Polarized Spherical Gradient Illumination</span></h2>
                     <div>
-                        <img src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/PolarizedReflectanceField/objects.jpg"
+                        <img src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/PolarizedReflectanceField/polat_comparison.jpg"
                             alt="teaser" class="center">
                     </div>
-                </div>
-                <div>
-                    <h2 class="subtitle has-text" style="text-align: center"><span class="dnerf">Polarized Reflectance
-                            Field Capture Examples</span></h2>
-                    <div style="text-align: center">Objects are captured from multiple views under
-                        cross/parallel-polarized OLAT, each with 346 valid lighting directions.</div>
-                    <video controls loop="true" muted="true" autoplay="true">
-                        <source
-                            src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/PolarizedReflectanceField/polarized%20reflectance%20field%20database.mp4"
-                            type="video/mp4">
-                    </video>
-                </div>
-                <div>
-                    <h2 class="subtitle has-text" style="text-align: center"><span class="dnerf">Optimized Material
-                            Examplesn (Will update the following video with text later)</span></h2>
-                    <div style="text-align: center">The optimized material includes diffuse albedo, diffuse normal,
-                        specular albedo, specular normal, anisotropy, and roughness. It also measures diffuse occlusion,
-                        diffuse inter-reflection, specular occlusion, and specular inter-reflection.</div>
-                    <video controls loop="true" muted="true" autoplay="true">
-                        <source
-                            src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/PolarizedReflectanceField/material%20database.mp4"
-                            type="video/mp4">
-                    </video>
                 </div>
             </div>
         </div>
@@ -198,6 +190,32 @@
             <!-- Paper video. -->
 
             <!-- Abstract. -->
+            <div class="columns is-centered has-text-centered">
+                <div class="column is-full-width">
+                    <h2 class="title is-3">Abstract</h2>
+                    <div class="content has-text-justified">
+                        <p>
+                            Accurately measuring the geometry and spatially-varying reflectance of real-world objects is
+                            a complex task due to their intricate shapes formed by concave features, hollow engravings
+                            and diverse surfaces, resulting in inter-reflection and occlusion when photographed.
+                            Moreover, issues like lens flare and overexposure can arise from interference from secondary
+                            reflections and limitations of hardware even in professional studios. In this paper, we
+                            propose a novel approach using polarized reflectance field capture and a comprehensive
+                            statistical analysis algorithm to obtain highly accurate surface normals (within 0.1mm/px)
+                            and spatially-varying reflectance data, including albedo, specular separation, roughness,
+                            and anisotropy parameters for realistic rendering and analysis. Our algorithm removes image
+                            artifacts via analytical modeling and further employs both an initial step and an
+                            optimization step computed on the whole image collection to further enhance the precision of
+                            per-pixel surface reflectance and normal measurement. We showcase the captured shapes and
+                            reflectance of diverse objects with a wide material range, spanning from highly diffuse to
+                            highly glossy — a challenge unaddressed by prior techniques. Our approach enhances
+                            downstream applications by offering precise measurements for realistic rendering and
+                            provides a valuable training dataset for emerging research in inverse rendering. We will
+                            release the polarized reflectance fields of several captured objects with this work.
+                        </p>
+                    </div>
+                </div>
+            </div>
 
             <!-- Pipeline. -->
 
@@ -206,11 +224,46 @@
             <!-- Qualitative Results -->
 
             <!-- Results. -->
+            <div class="container is-max-desktop">
+                <div class="hero-body">
+                    <div>
+                        <h2 class="subtitle has-text" style="text-align: center"><span class="dnerf">Overview of the
+                                scanned objects</span></h2>
+                        <div>
+                            <img src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/PolarizedReflectanceField/objects.jpg"
+                                alt="teaser" class="center">
+                        </div>
+                    </div>
+                    <div>
+                        <h2 class="subtitle has-text" style="text-align: center"><span class="dnerf">Polarized
+                                Reflectance
+                                Field Capture Examples</span></h2>
+                        <div style="text-align: center">Objects are captured from multiple views under
+                            cross/parallel-polarized OLAT, each with 346 valid lighting directions.</div>
+                        <video controls loop="true" muted="true" autoplay="true">
+                            <source
+                                src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/PolarizedReflectanceField/polarized%20reflectance%20field%20database.mp4"
+                                type="video/mp4">
+                        </video>
+                    </div>
+                    <div>
+                        <h2 class="subtitle has-text" style="text-align: center"><span class="dnerf">Optimized Material
+                                Examplesn (Will update the following video with text later)</span></h2>
+                        <div style="text-align: center">The optimized material includes diffuse albedo, diffuse normal,
+                            specular albedo, specular normal, anisotropy, and roughness. It also measures diffuse
+                            occlusion,
+                            diffuse inter-reflection, specular occlusion, and specular inter-reflection.</div>
+                        <video controls loop="true" muted="true" autoplay="true">
+                            <source
+                                src="https://github.com/jingyangcarl/jingyangcarl.github.io/raw/master/PolarizedReflectanceField/material%20database.mp4"
+                                type="video/mp4">
+                        </video>
+                    </div>
+                </div>
+            </div>
 
         </div>
     </section>
-
-
 
     <!-- Cite. -->
 
