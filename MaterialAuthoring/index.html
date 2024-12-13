@@ -173,6 +173,37 @@
             <!-- Paper video. -->
 
             <!-- Abstract. -->
+            <div class="columns is-centered has-text-centered">
+                <div class="column is-full-width">
+                    <h2 class="title is-3">Abstract</h2>
+                    <div class="content has-text-justified">
+                        <p>
+                            Significant advancements are yet needed to realize mainstream realistic renderings of
+                            computer-generated scenes. In order to eliminate the laborious process of acquiring material
+                            reflectance through spectroscopic measurements or software-based procedural modeling, we
+                            propose a material authoring framework. This framework is designed to generate surface
+                            reflectance properties of a given object in the form of albedo, specular, surface normals,
+                            occlusion, roughness, and anisotropy maps, solving for BRDF models, all based on
+                            user-defined material keywords that describe an arbitrary object. The resulting material
+                            reflectance assets can be seamlessly integrated into a traditional PBR-based shader or
+                            neural rendering pipeline, capable of adapting to different object classes. To accomplish
+                            this objective, we introduce a comprehensive BRDF database that comprises 80 distinct
+                            objects belonging to 17 material classes. Each object within the database is captured under
+                            diverse lighting conditions and from various viewing angles. Our material authoring pipeline
+                            follows a two-step approach. Firstly, we introduce a UV-space generative model to synthesize
+                            desired textures of a given geometry based on user-defined material class labels.
+                            Subsequently, we develop a material inference network to decompose the synthesized textures
+                            into maps of reflectance properties to describe the BRDF model. The network is trained using
+                            the proposed BRDF database. We demonstrate the effectiveness of our proposed material
+                            authoring pipeline by rendering photo-realistic images with PBR-based industry shaders and
+                            neural shaders. Our framework facilitates high-quality material authoring and image-based
+                            inverse rendering. Additionally, we contribute to a BRDF database to further research in
+                            this field.
+
+                        </p>
+                    </div>
+                </div>
+            </div>
 
             <!-- Pipeline. -->
 
