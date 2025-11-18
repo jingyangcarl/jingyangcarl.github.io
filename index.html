@@ -144,7 +144,14 @@
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.z = 2.5;
             cameraObject = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+                // shorten the inset camera frustum to a smaller far plane to avoid an overly long helper
+            if (typeof args !== 'undefined' && args.render && args.render.camera && typeof args.render.camera.cameraFar !== 'undefined') {
+                cameraObject.far = args.render.camera.cameraFar;
+            } else {
+                cameraObject.far = 2;
+            }
             cameraObject.position.z = 0.6;
+            cameraObject.updateProjectionMatrix();
             renderer = new THREE.WebGLRenderer();
             // renderer = new WebGPURenderer();
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -210,13 +217,70 @@
                 helper.depth = v;
                 if (helper.visible) helper.update();
             } ).listen();
-            gui_render.add( args.render.sideRender, 'show').name('Show Side Render').onChange(v => {
-                rendererObject.domElement.style.display = v ? 'block' : 'none';
+            let gui_side = gui_render.addFolder('Side Renderer');
+            gui_side.open();
+            gui_side.add( args.render.sideRender, 'show').name('Show Side Render').onChange(v => {
+                // keep existing behavior if rendererObject exists, otherwise just toggle flag
+                if (typeof rendererObject !== 'undefined' && rendererObject && rendererObject.domElement) {
+                    rendererObject.domElement.style.display = v ? 'block' : 'none';
+                }
+            }).listen();
+            gui_side.add( args.render.sideRender, 'insetScalar', 2, 8, 1 ).name('Inset Scalar').onChange(v => {
+                // recompute inset sizes and update camera aspect
+                insetWidth = window.innerHeight / v;
+                insetHeight = window.innerHeight / v;
+                if (typeof cameraObject !== 'undefined' && cameraObject) {
+                    cameraObject.aspect = insetWidth / insetHeight;
+                    cameraObject.updateProjectionMatrix();
+                }
+            }).listen();
+            // Camera settings grouped under Side Renderer -> Camera
+            let gui_camera = gui_render.addFolder('Camera');
+            gui_camera.open();
+            gui_camera.add( args.render.camera, 'showCamera').name('Show Camera').onChange(v => {
+                if (cameraHelpersArr && cameraHelpersArr.length > 0) cameraHelpersArr.forEach(h => h.visible = v);
+                if (cameraMarkers) cameraMarkers.visible = v;
+            }).listen();
+            gui_camera.add( args.render.camera, 'cameraFar', 0.5, 10, 0.1 ).name('Camera Far').onChange(v => {
+                // update inset camera far and only the selected camera view's far
+                args.render.camera.cameraFar = v;
+                if (typeof cameraObject !== 'undefined' && cameraObject) {
+                    cameraObject.far = v;
+                    cameraObject.updateProjectionMatrix();
+                }
+                if (cameraViews && cameraViews.length > 0) {
+                    cameraViews.forEach((cv, i) => { 
+                        if (i === selectedCameraIndex) cv.far = v; 
+                        else cv.far = 0.001;
+                        cv.updateProjectionMatrix();
+                    });
+                }
+                if (cameraHelpersArr && cameraHelpersArr.length > 0) cameraHelpersArr.forEach(h => h.update());
+            }).listen();
+            gui_camera.add( args.render.camera, 'cameraCount', 1, 20, 1 ).name('Camera Count').onChange(v => {
+                // recreate camera views with new count
+                if (typeof createCameraViews === 'function') {
+                    createCameraViews();
+                    // clamp selected index
+                    selectedCameraIndex = Math.min(selectedCameraIndex, cameraViews.length - 1);
+                    selectCamera(selectedCameraIndex);
+                }
+            }).listen();
+            gui_camera.add( args.render.camera, 'cameraDistance', 0.5, 2, 0.01 ).name('Camera Distance').onChange(v => {
+                // recreate camera views with new distance
+                if (typeof createCameraViews === 'function') {
+                    createCameraViews();
+                    selectCamera(selectedCameraIndex);
+                }
             }).listen();
 
             let gui_projects = gui.addFolder('Projects');
             gui_projects.open();
             gui_projects.add( args.projects, 'show').name('Show Projects').onChange(v => sphereLabels.visible = v).listen();
+            gui_projects.add( args.projects, 'showTitle').name('Show Title').onChange(v => {
+                const infoDiv = document.getElementById('info');
+                if (infoDiv) infoDiv.style.display = v ? 'block' : 'none';
+            }).listen();
 
             gui.add( args.controls, 'reset').name('Reset').onChange(v => onclick_btn_reset()).listen();
             gui.add( args.controls, 'fullscreen').name('Fullscreen').listen();
@@ -509,10 +573,20 @@
                 scene.add( mesh );
                 mesh.scale.setScalar( 0.0075 );
 
+                // compute object center (bounding box center) for camera targets
+                const bbox = new THREE.Box3().setFromObject(mesh);
+                bbox.getCenter(objectTarget);
+
                 helper = new MeshBVHHelper( mesh );
                 helper.color.set( 'lightgreen' );
                 helper.visible = args.render.rayCaster.displayHelper;
                 scene.add( helper );
+
+                // recreate camera views now that we know the object target
+                if (typeof createCameraViews === 'function') {
+                    createCameraViews();
+                    selectCamera(selectedCameraIndex);
+                }
 
             } );
         }
@@ -783,6 +857,19 @@
                 helper.visible = args.render.rayCaster.displayHelper;
             }
 
+            // update multiple camera helpers and markers visibility/update
+            if (cameraHelpersArr && cameraHelpersArr.length > 0) {
+                cameraHelpersArr.forEach(h => {
+                    if (h) {
+                        h.visible = args.render.camera.showCamera;
+                        h.update();
+                    }
+                });
+            }
+            if (cameraMarkers) {
+                cameraMarkers.visible = args.render.camera.showCamera;
+            }
+
             if (mesh && args.controls.autoRotate_mesh) {
                 mesh.rotation.y += args.controls.autoRotate_mesh_speed / 10;
                 mesh.updateMatrixWorld();
@@ -836,6 +923,9 @@
             insetWidth = window.innerHeight / args.render.sideRender.insetScalar; // square
             insetHeight = window.innerHeight / args.render.sideRender.insetScalar;
             cameraObject.aspect = insetWidth / insetHeight;
+            if (typeof args !== 'undefined' && args.render && args.render.camera && typeof args.render.camera.cameraFar !== 'undefined') {
+                cameraObject.far = args.render.camera.cameraFar;
+            }
             cameraObject.updateProjectionMatrix();
         }
 
@@ -848,6 +938,16 @@
         // Global variables
         let scene, camera, cameraObject, renderer, labelRenderer, gui, stats;
         let rig, lightboards;
+        // multiple inset cameras and helpers
+        let cameraHelper;
+        let cameraViews = [];
+        let cameraHelpersArr = [];
+        let cameraMarkers = null;
+        let selectedCameraIndex = 0;
+        const clickRaycaster = new THREE.Raycaster();
+        const clickMouse = new THREE.Vector2();
+        // point that cameras should look at (object center). default origin until object loads
+        let objectTarget = new THREE.Vector3(0,0,0);
         let controls;
         let mesh, helper, bvh;
         let sphereInstance, lineSegments, sphereLabels;
@@ -928,11 +1028,18 @@
                 },
                 sideRender: {
                     show: true,
-                    insetScalar: 4,
+                    insetScalar: 3,
+                },
+                camera: {
+                    showCamera: true,
+                    cameraFar: 2,
+                    cameraCount: 1,
+                    cameraDistance: 0.6,
                 }
             },
             projects: {
                 show: true,
+                showTitle: true,
                 items: [
                     // Research on Light Transport and Rendering
                     {
@@ -1068,11 +1175,153 @@
         // Setup light stage
         init();
         setupGUI();
+        // initialize info title visibility according to args
+        const infoDiv = document.getElementById('info');
+        if (infoDiv) infoDiv.style.display = args.projects.showTitle ? 'block' : 'none';
         setupStats();
         setupLightStage();
         setupBunny();
         setupRayCaster();
         setupOrbitControls();
+
+        // create multiple cameras arranged in a 'W' shape and their helpers/markers
+        function createCameraViews() {
+            // remove previous helpers/markers if present
+            if (cameraHelpersArr.length > 0) {
+                cameraHelpersArr.forEach(h => scene.remove(h));
+                cameraHelpersArr = [];
+            }
+            if (cameraMarkers) {
+                scene.remove(cameraMarkers);
+                cameraMarkers = null;
+            }
+
+            cameraViews = [];
+            cameraMarkers = new THREE.Group();
+
+            // base distance: use configured cameraDistance or fallback to current cameraObject distance
+            const distance = (args && args.render && args.render.camera && args.render.camera.cameraDistance) ? args.render.camera.cameraDistance : (cameraObject.position.length() || 0.6);
+
+            // compute coordinates to form a 'W' shape distributed across two rows
+            const count = args && args.render && args.render.camera && args.render.camera.cameraCount ? Math.max(1, Math.min(20, Math.round(args.render.camera.cameraCount))) : 8;
+            // top row proportion (approx 5/8 of default 8 -> 5). Clamp so both rows exist when possible
+            let topCount = Math.min(count - 1, Math.max(1, Math.round(count * 5 / 8)));
+            if (topCount >= count) topCount = count - 1;
+            const bottomCount = count - topCount;
+
+            // Sample directions from an icosphere to get well-distributed camera positions.
+            function sampleIcosphereDirections(n) {
+                let subdiv = 0;
+                let verts = [];
+                while (verts.length < n && subdiv <= 5) {
+                    const geom = new THREE.IcosahedronGeometry(1, subdiv);
+                    const pos = geom.attributes.position;
+                    const uniq = [];
+                    const seen = new Set();
+                    for (let i = 0; i < pos.count; i++) {
+                        const v = new THREE.Vector3().fromBufferAttribute(pos, i).normalize();
+                        const key = `${v.x.toFixed(6)},${v.y.toFixed(6)},${v.z.toFixed(6)}`;
+                        if (!seen.has(key)) { seen.add(key); uniq.push(v); }
+                    }
+                    verts = uniq;
+                    subdiv++;
+                }
+                // fallback to Fibonacci sphere if not enough verts
+                if (verts.length < n) {
+                    verts = [];
+                    for (let i = 0; i < n; i++) {
+                        const t = (i + 0.5) / n;
+                        const phi = Math.acos(1 - 2 * t);
+                        const theta = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5);
+                        verts.push(new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.sin(phi) * Math.sin(theta), Math.cos(phi)));
+                    }
+                }
+                const sampled = [];
+                const step = Math.floor(verts.length / n) || 1;
+                for (let i = 0; i < n; i++) sampled.push(verts[(i * step) % verts.length]);
+                return sampled;
+            }
+
+            const dirs = sampleIcosphereDirections(count);
+
+            dirs.forEach((dir, idx) => {
+                const cam = new THREE.PerspectiveCamera(
+                    cameraObject.fov || 75,
+                    1,
+                    cameraObject.near || 0.1,
+                    (idx === selectedCameraIndex) ? (args.render.camera.cameraFar || 2) : 0.001
+                );
+
+                cam.position.copy(dir.clone().multiplyScalar(distance));
+                // ensure camera points to the object target (object center)
+                cam.lookAt(objectTarget);
+                cam.updateMatrixWorld(true);
+                cam.updateProjectionMatrix();
+                cameraViews.push(cam);
+
+                // helper
+                const helper = new THREE.CameraHelper(cam);
+                helper.material.color.set(idx === selectedCameraIndex ? 0xffff00 : 0xffffff);
+                helper.visible = args.render.camera.showCamera;
+                helper.update();
+                scene.add(helper);
+                cameraHelpersArr.push(helper);
+
+                // clickable marker
+                const markerMat = new THREE.MeshBasicMaterial({ color: idx === selectedCameraIndex ? 0xffff00 : 0xffffff });
+                const marker = new THREE.Mesh(new THREE.SphereGeometry(0.02), markerMat);
+                marker.position.copy(cam.position);
+                marker.userData = { idx };
+                cameraMarkers.add(marker);
+            });
+
+            scene.add(cameraMarkers);
+        }
+
+        function selectCamera(idx) {
+            if (idx < 0 || idx >= cameraViews.length) return;
+            selectedCameraIndex = idx;
+            // copy selected camera to cameraObject (inset)
+            const src = cameraViews[idx];
+            cameraObject.position.copy(src.position);
+            cameraObject.quaternion.copy(src.quaternion);
+            cameraObject.fov = src.fov;
+            cameraObject.near = src.near;
+            // selected camera uses the configured far; others collapse to tiny far
+            cameraObject.far = args.render.camera.cameraFar;
+            cameraObject.updateProjectionMatrix();
+
+            // update helper/marker highlights
+            cameraHelpersArr.forEach((h, i) => {
+                h.material.color.set(i === idx ? 0xffff00 : 0xffffff);
+                if (cameraViews[i]) {
+                    cameraViews[i].far = (i === idx) ? args.render.camera.cameraFar : 0.001;
+                    cameraViews[i].updateProjectionMatrix();
+                }
+            });
+            cameraMarkers.children.forEach((m, i) => {
+                m.material.color.set(i === idx ? 0xffff00 : 0xffffff);
+            });
+        }
+
+        // click handler to pick markers
+        renderer.domElement.addEventListener('pointerdown', (ev) => {
+            const rect = renderer.domElement.getBoundingClientRect();
+            clickMouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+            clickMouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+            clickRaycaster.setFromCamera(clickMouse, camera);
+            const intersects = clickRaycaster.intersectObjects(cameraMarkers.children, true);
+            if (intersects.length > 0) {
+                const idx = intersects[0].object.userData.idx;
+                selectCamera(idx);
+            }
+        });
+
+        // create initial views
+        createCameraViews();
+        // ensure selected camera copied to inset
+        selectCamera(selectedCameraIndex);
+
         animate();
 
         window.addEventListener( 'resize', onWindowResize, false );
