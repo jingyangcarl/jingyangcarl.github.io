@@ -3,42 +3,40 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Shader Gallery Shot</title>
-  <link rel="stylesheet" href="./style.css" />
+  <title>Shader Museum</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <canvas id="c"></canvas>
+  <div id="app">
+    <div id="hud">
+      <div class="pill"><b>WASD</b> move · <b>Mouse</b> look · <b>E</b> inspect · <b>Esc</b> back</div>
+      <div id="hint" class="pill hidden"></div>
+    </div>
 
-  <!-- Right-side typography overlay (DOM, not 3D) -->
-  <div id="overlay">
-    <div class="panel">
-      <div class="title">Domain Warping</div>
-      <div class="sub">
-        A domain distortion noise technique invented by<br/>
-        Inigo Quilez
+    <div id="overlay" class="overlay">
+      <div class="overlayCard">
+        <h1>Shader Museum</h1>
+        <p>
+          Click to enter. Walk a virtual gallery of real-time shader “paintings”.
+        </p>
+        <button id="enterBtn">Enter</button>
+        <div class="tiny">
+          Tip: If you see a blank painting, your GPU/browser may be blocking WebGL. Try Chrome/Edge.
+        </div>
       </div>
-      <div class="rule"></div>
+    </div>
+
+    <div id="viewer" class="viewer hidden">
+      <div class="viewerTop">
+        <div>
+          <div id="viewerTitle" class="viewerTitle">Title</div>
+          <div id="viewerMeta" class="viewerMeta">Author</div>
+        </div>
+        <button id="viewerClose" class="btn">Back (Esc)</button>
+      </div>
+      <div id="viewerDesc" class="viewerDesc"></div>
     </div>
   </div>
-
-  <div id="hud">
-    <div class="pill">
-      <b>Gallery Shot</b>
-      <span class="sep">•</span>
-      <span id="fps">— fps</span>
-      <span class="sep">•</span>
-      <span id="res">—</span>
-    </div>
-  </div>
-
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-      }
-    }
-  </script>
 
   <script type="module" src="./main.js"></script>
 </body>

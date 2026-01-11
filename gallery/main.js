@@ -1,441 +1,415 @@
-import * as THREE from "three";
-import { Reflector } from "three/addons/objects/Reflector.js";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { FilmPass } from "three/addons/postprocessing/FilmPass.js";
-import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import * as THREE from "https://unpkg.com/three@0.182.0/build/three.module.js";
+import { PointerLockControls } from "https://unpkg.com/three@0.182.0/examples/jsm/controls/PointerLockControls.js";
+import { GALLERY } from "./gallery.js";
 
-const canvas = document.querySelector("#c");
-const fpsEl = document.querySelector("#fps");
-const resEl = document.querySelector("#res");
+const overlay = document.getElementById("overlay");
+const enterBtn = document.getElementById("enterBtn");
+const hint = document.getElementById("hint");
 
-// ---------- renderer ----------
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-renderer.setClearColor(0x05070a, 1);
+const viewer = document.getElementById("viewer");
+const viewerTitle = document.getElementById("viewerTitle");
+const viewerMeta = document.getElementById("viewerMeta");
+const viewerDesc = document.getElementById("viewerDesc");
+const viewerClose = document.getElementById("viewerClose");
+
+let mode = "museum"; // "museum" | "viewer"
+let selectedArtwork = null;
+
+// --- renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.65; // brighter, like your reference
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
 
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// --- scenes/cameras
+const museumScene = new THREE.Scene();
+museumScene.background = new THREE.Color(0x070a10);
+museumScene.fog = new THREE.Fog(0x070a10, 6, 40);
 
-// ---------- scene ----------
-const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x05070a, 6.0, 34.0);
+const museumCamera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 140);
+museumCamera.position.set(0, 1.65, 4);
 
-// Composition constants (match your screenshot layout)
-const ART = {
-  center: new THREE.Vector3(-4.2, 3.1, -16.0), // LEFT
-  size: new THREE.Vector2(8.6, 5.1),
-};
+const viewerScene = new THREE.Scene();
+const viewerCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1);
+viewerCamera.position.z = 1;
 
-const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 140);
-
-// Camera is front-ish, slightly right of center to keep space for right panel
-const CAM_BASE = {
-  pos: new THREE.Vector3(2.8, 2.65, 9.8),
-  look: ART.center.clone(),
-};
-
-// Pointer parallax (subtle museum-like)
-const PARALLAX = {
-  maxX: 0.85,
-  maxY: 0.40,
-  maxZ: 0.55,
-  damping: 0.085,
-};
-
-camera.position.copy(CAM_BASE.pos);
-camera.lookAt(CAM_BASE.look);
-
-// ---------- lighting ----------
-scene.add(new THREE.AmbientLight(0xffffff, 0.10));
-scene.add(new THREE.HemisphereLight(0xbfd7ff, 0x0a0b0d, 0.25));
-
-// key overhead
-const key = new THREE.DirectionalLight(0xffffff, 0.75);
-key.position.set(6, 10, 10);
-key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
-key.shadow.camera.left = -18;
-key.shadow.camera.right = 18;
-key.shadow.camera.top = 18;
-key.shadow.camera.bottom = -18;
-key.shadow.camera.near = 1;
-key.shadow.camera.far = 60;
-scene.add(key);
-
-// cool rim (adds silhouette separation)
-const rim = new THREE.PointLight(0x7cf1ff, 2.0, 40, 2.0);
-rim.position.set(-10, 3.2, -10);
-scene.add(rim);
-
-// warm accent
-const warm = new THREE.PointLight(0xffc38a, 0.95, 22, 2.0);
-warm.position.set(8, 1.8, -6);
-scene.add(warm);
-
-// ---------- room ----------
-const room = new THREE.Mesh(
-  new THREE.BoxGeometry(30, 12, 42),
-  new THREE.MeshStandardMaterial({
-    color: 0x0f131a,
-    roughness: 0.92,
-    metalness: 0.06,
-    side: THREE.BackSide,
-  })
+// full-screen quad for viewer mode
+const viewerQuad = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.MeshBasicMaterial({ color: 0x000000 })
 );
-room.position.set(0, 5.0, -8.0);
-room.receiveShadow = true;
-scene.add(room);
+viewerScene.add(viewerQuad);
 
-// ribs for industrial feel
-const ribMat = new THREE.MeshStandardMaterial({ color: 0x0b0f15, roughness: 0.85, metalness: 0.20 });
-const ribGeo = new THREE.BoxGeometry(0.12, 8.5, 0.5);
-for (let i = 0; i < 21; i++) {
-  const x = -13 + i * (26 / 20);
-  const a = new THREE.Mesh(ribGeo, ribMat);
-  a.position.set(x, 4.3, -28.0);
-  a.castShadow = true;
-  a.receiveShadow = true;
-  scene.add(a);
+// --- controls (pointer lock FPS)
+const controls = new PointerLockControls(museumCamera, document.body);
 
-  const b = a.clone();
-  b.position.z = 10.5;
-  scene.add(b);
+// movement state
+const keys = { w: false, a: false, s: false, d: false };
+const vel = new THREE.Vector3();
+const dir = new THREE.Vector3();
+
+function setHint(text, show = true) {
+  if (!show) {
+    hint.classList.add("hidden");
+    hint.textContent = "";
+    return;
+  }
+  hint.textContent = text;
+  hint.classList.remove("hidden");
 }
 
-// ---------- reflective floor ----------
-const floor = new Reflector(new THREE.PlaneGeometry(60, 60), {
-  textureWidth: 1024,
-  textureHeight: 1024,
-  color: 0x05070a,
-});
+// --- lighting
+museumScene.add(new THREE.AmbientLight(0xffffff, 0.15));
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.35);
+keyLight.position.set(2, 6, 5);
+museumScene.add(keyLight);
+
+const fillLight = new THREE.PointLight(0x88aaff, 0.7, 18, 2);
+fillLight.position.set(0, 2.4, 0);
+museumScene.add(fillLight);
+
+// --- museum geometry (simple corridor)
+const corridor = {
+  halfWidth: 3.6,
+  height: 3.2,
+  segmentLen: 5.0,
+  segments: Math.max(GALLERY.length, 6),
+};
+
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x0c1220, roughness: 0.95, metalness: 0.0 });
+const wallMat  = new THREE.MeshStandardMaterial({ color: 0x101a2d, roughness: 0.95, metalness: 0.0 });
+const trimMat  = new THREE.MeshStandardMaterial({ color: 0x0a0f1a, roughness: 0.6,  metalness: 0.15 });
+
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(corridor.halfWidth * 2, corridor.segmentLen * corridor.segments + 10),
+  floorMat
+);
 floor.rotation.x = -Math.PI / 2;
-floor.position.y = 0;
-scene.add(floor);
+floor.position.set(0, 0, -((corridor.segmentLen * corridor.segments) / 2));
+museumScene.add(floor);
 
-const floorBase = new THREE.Mesh(
-  new THREE.PlaneGeometry(60, 60),
-  new THREE.MeshStandardMaterial({ color: 0x07090c, roughness: 1.0, metalness: 0.0 })
+const ceiling = new THREE.Mesh(
+  new THREE.PlaneGeometry(corridor.halfWidth * 2, corridor.segmentLen * corridor.segments + 10),
+  wallMat
 );
-floorBase.rotation.x = -Math.PI / 2;
-floorBase.position.y = -0.03;
-floorBase.receiveShadow = true;
-scene.add(floorBase);
+ceiling.rotation.x = Math.PI / 2;
+ceiling.position.set(0, corridor.height, -((corridor.segmentLen * corridor.segments) / 2));
+museumScene.add(ceiling);
 
-// ---------- artwork shader (bright, cinematic) ----------
-const screenUniforms = {
-  iTime: { value: 0 },
-  iResolution: { value: new THREE.Vector2(1, 1) },
-};
+const leftWall = new THREE.Mesh(
+  new THREE.PlaneGeometry(corridor.segmentLen * corridor.segments + 10, corridor.height),
+  wallMat
+);
+leftWall.rotation.y = Math.PI / 2;
+leftWall.position.set(-corridor.halfWidth, corridor.height / 2, -((corridor.segmentLen * corridor.segments) / 2));
+museumScene.add(leftWall);
 
-const screenMat = new THREE.ShaderMaterial({
-  uniforms: screenUniforms,
-  vertexShader: `
-    varying vec2 vUv;
-    void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-  `,
-  fragmentShader: `
+const rightWall = leftWall.clone();
+rightWall.rotation.y = -Math.PI / 2;
+rightWall.position.x = corridor.halfWidth;
+museumScene.add(rightWall);
+
+// subtle light strips
+for (let i = 0; i < corridor.segments; i++) {
+  const z = -i * corridor.segmentLen;
+  const strip = new THREE.PointLight(0xffffff, 0.55, 10, 2);
+  strip.position.set(0, corridor.height - 0.25, z);
+  museumScene.add(strip);
+
+  const stripGeo = new THREE.BoxGeometry(corridor.halfWidth * 1.4, 0.06, 0.12);
+  const stripMesh = new THREE.Mesh(stripGeo, trimMat);
+  stripMesh.position.copy(strip.position);
+  museumScene.add(stripMesh);
+}
+
+// --- shadertoy-ish shader wrapper
+const VERT = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+function makeShadertoyFragment(userMainImageCode) {
+  // Provides: iTime, iResolution, iMouse
+  return `
     precision highp float;
-    varying vec2 vUv;
+
     uniform float iTime;
-    uniform vec2 iResolution;
+    uniform vec3  iResolution;
+    uniform vec4  iMouse;
 
-    float hash(vec2 p){
-      p = fract(p * vec2(123.34, 456.21));
-      p += dot(p, p + 34.345);
-      return fract(p.x * p.y);
-    }
-    float noise(vec2 p){
-      vec2 i = floor(p);
-      vec2 f = fract(p);
-      float a = hash(i);
-      float b = hash(i + vec2(1,0));
-      float c = hash(i + vec2(0,1));
-      float d = hash(i + vec2(1,1));
-      vec2 u = f*f*(3.0-2.0*f);
-      return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y;
-    }
-    float fbm(vec2 p){
-      float v = 0.0;
-      float a = 0.5;
-      for(int i=0;i<6;i++){ v += a * noise(p); p *= 2.0; a *= 0.5; }
-      return v;
-    }
-
-    vec3 aces(vec3 x){
-      float a=2.51, b=0.03, c=2.43, d=0.59, e=0.14;
-      return clamp((x*(a*x+b))/(x*(c*x+d)+e), 0.0, 1.0);
-    }
-
-    void main(){
-      vec2 uv = vUv;
-      vec2 p = (uv - 0.5) * vec2(iResolution.x / iResolution.y, 1.0);
-
-      float t = iTime * 0.18;
-
-      // "domain warping-ish" look (simple and stable)
-      vec2 w = vec2(fbm(p*2.1 + t), fbm(p*2.1 - t));
-      float n = fbm(p*3.0 + 1.6*w);
-
-      // bright, almost white marble energy
-      float m = smoothstep(0.25, 0.95, n);
-      vec3 col = vec3(0.05, 0.06, 0.07);
-      col += m * vec3(1.8, 1.9, 2.05);
-
-      // subtle cool shadows
-      col *= mix(vec3(0.88,0.92,1.05), vec3(1.0), smoothstep(-0.6,0.6,p.x));
-
-      // screen vignette
-      float v = smoothstep(0.95, 0.25, length(uv - 0.5));
-      col *= mix(0.62, 1.05, v);
-
-      // mild tonemap inside (helps bloom)
-      col = aces(col);
-
-      gl_FragColor = vec4(col, 1.0);
-    }
-  `,
-});
-
-const screen = new THREE.Mesh(new THREE.PlaneGeometry(ART.size.x, ART.size.y), screenMat);
-screen.position.copy(ART.center);
-screen.rotation.y = 0.06; // tiny yaw for depth
-scene.add(screen);
-
-const frame = new THREE.Mesh(
-  new THREE.PlaneGeometry(ART.size.x + 0.55, ART.size.y + 0.55),
-  new THREE.MeshStandardMaterial({ color: 0x05070a, roughness: 0.7, metalness: 0.08 })
-);
-frame.position.copy(ART.center);
-frame.position.z += 0.02;
-frame.rotation.copy(screen.rotation);
-frame.castShadow = true;
-scene.add(frame);
-
-// screen “light spill”
-const screenLight = new THREE.PointLight(0xc8fbff, 7.2, 45, 2.0);
-screenLight.position.set(ART.center.x + 0.6, ART.center.y, ART.center.z + 0.8);
-scene.add(screenLight);
-
-// ---------- silhouette person ----------
-function makeFigure() {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.9, metalness: 0.0 });
-
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.92, 6, 12), mat);
-  body.position.y = 1.05;
-  body.castShadow = true;
-  g.add(body);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), mat);
-  head.position.y = 1.66;
-  head.castShadow = true;
-  g.add(head);
-
-  const feet = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.08, 0.22), mat);
-  feet.position.y = 0.05;
-  feet.castShadow = true;
-  g.add(feet);
-
-  // centered in front of the artwork
-  g.position.set(ART.center.x, 0, -10.2);
-  return g;
-}
-scene.add(makeFigure());
-
-// ---------- light shafts (cheap but effective) ----------
-function makeRayTexture() {
-  const c = document.createElement("canvas");
-  c.width = 256; c.height = 256;
-  const ctx = c.getContext("2d");
-  const g = ctx.createRadialGradient(128, 40, 10, 128, 40, 180);
-  g.addColorStop(0.0, "rgba(255,255,255,0.85)");
-  g.addColorStop(0.35, "rgba(255,255,255,0.25)");
-  g.addColorStop(1.0, "rgba(255,255,255,0.0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0,0,256,256);
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.needsUpdate = true;
-  return tex;
-}
-const rayTex = makeRayTexture();
-const rayMat = new THREE.MeshBasicMaterial({
-  color: 0x9fefff,
-  map: rayTex,
-  transparent: true,
-  opacity: 0.14,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
-  side: THREE.DoubleSide,
-});
-
-function addRayPlane(x, y, z, rx, ry, sx, sy, op){
-  const m = rayMat.clone();
-  m.opacity = op;
-  const p = new THREE.Mesh(new THREE.PlaneGeometry(1,1), m);
-  p.position.set(x,y,z);
-  p.rotation.set(rx,ry,0);
-  p.scale.set(sx,sy,1);
-  scene.add(p);
-  return p;
-}
-
-// a few layered rays from top-left
-const rays = [
-  addRayPlane(-12, 8.5, -8, -1.2, 0.25, 20, 12, 0.10),
-  addRayPlane(-10, 8.2, -10, -1.25, 0.18, 18, 10, 0.09),
-  addRayPlane(-8,  8.0, -12, -1.28, 0.10, 16,  9, 0.08),
-];
-
-// ---------- post FX ----------
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-
-const bloom = new UnrealBloomPass(new THREE.Vector2(1,1), 1.25, 0.85, 0.0);
-composer.addPass(bloom);
-
-const film = new FilmPass(0.35, 0.18, 648, false);
-composer.addPass(film);
-
-// vignette + letterbox (ShaderPass needs clip-space vertex)
-const vignetteLetterbox = new ShaderPass({
-  uniforms: {
-    tDiffuse: { value: null },
-    resolution: { value: new THREE.Vector2(1,1) },
-    vignette: { value: 0.55 },
-    targetAspect: { value: 16/9 },
-  },
-  vertexShader: `
-    varying vec2 vUv;
-    void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
-  `,
-  fragmentShader: `
-    uniform sampler2D tDiffuse;
-    uniform vec2 resolution;
-    uniform float vignette;
-    uniform float targetAspect;
     varying vec2 vUv;
 
-    float hash12(vec2 p){
-      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-      p3 += dot(p3, p3.yzx + 33.33);
-      return fract((p3.x + p3.y) * p3.z);
+    ${userMainImageCode}
+
+    void main() {
+      vec2 fragCoord = vUv * iResolution.xy;
+      vec4 color = vec4(0.0);
+      mainImage(color, fragCoord);
+      gl_FragColor = vec4(color.rgb, 1.0);
     }
+  `;
+}
 
-    void main(){
-      vec4 col = texture2D(tDiffuse, vUv);
+function createArtworkMaterial(fragmentMainImage) {
+  const uniforms = {
+    iTime: { value: 0 },
+    iResolution: { value: new THREE.Vector3(window.innerWidth, window.innerHeight, 1) },
+    iMouse: { value: new THREE.Vector4(0, 0, 0, 0) },
+  };
 
-      // vignette
-      vec2 p = vUv*(1.0-vUv);
-      float v = pow(16.0*p.x*p.y, vignette);
-      col.rgb *= mix(0.78, 1.06, v);
+  return new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: VERT,
+    fragmentShader: makeShadertoyFragment(fragmentMainImage),
+  });
+}
 
-      // subtle extra grain (in addition to FilmPass)
-      float n = hash12(vUv*resolution + fract(col.rg*13.0));
-      col.rgb += (n-0.5)*0.012;
+// --- frames / artworks
+const artworks = []; // { data, group, screenMesh, material, z }
 
-      // letterbox if window taller than 16:9
-      float viewAspect = resolution.x/resolution.y;
-      float barSize = 0.0;
-      if(viewAspect < targetAspect){
-        float targetH = resolution.x/targetAspect;
-        float used = targetH/resolution.y;
-        barSize = (1.0-used)*0.5;
-      }
-      float top = smoothstep(0.0, 0.004, vUv.y - (1.0 - barSize));
-      float bot = smoothstep(0.0, 0.004, barSize - vUv.y);
-      float m = clamp(top+bot, 0.0, 1.0);
-      col.rgb = mix(col.rgb, vec3(0.0), m);
+function buildFrame({ data, index }) {
+  const side = index % 2 === 0 ? -1 : 1;
+  const z = -index * corridor.segmentLen - 2.0;
 
-      gl_FragColor = col;
-    }
-  `,
+  const group = new THREE.Group();
+  group.position.set(side * (corridor.halfWidth - 0.55), 1.55, z);
+  group.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+
+  // outer frame
+  const frameGeo = new THREE.BoxGeometry(1.35, 0.95, 0.12);
+  const frame = new THREE.Mesh(frameGeo, trimMat);
+  group.add(frame);
+
+  // screen (shader)
+  const mat = createArtworkMaterial(data.fragment);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.75), mat);
+  screen.position.z = 0.061;
+  group.add(screen);
+
+  // small spotlight aimed at the painting
+  const spot = new THREE.SpotLight(0xffffff, 1.25, 6, Math.PI / 7, 0.5, 1.2);
+  spot.position.set(-0.9 * side, 2.4, z + 0.4);
+  spot.target = group;
+  museumScene.add(spot);
+
+  museumScene.add(group);
+
+  artworks.push({ data, group, screenMesh: screen, material: mat, z });
+}
+
+GALLERY.forEach((data, index) => buildFrame({ data, index }));
+
+// --- input
+window.addEventListener("keydown", (e) => {
+  if (e.code === "KeyW") keys.w = true;
+  if (e.code === "KeyA") keys.a = true;
+  if (e.code === "KeyS") keys.s = true;
+  if (e.code === "KeyD") keys.d = true;
+
+  if (e.code === "KeyE") {
+    if (mode === "museum") tryInspect();
+  }
+
+  if (e.code === "Escape") {
+    if (mode === "viewer") closeViewer();
+  }
 });
-composer.addPass(vignetteLetterbox);
 
-// ---------- full-window resize (auto adapts) ----------
-function resize(){
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = Math.max(1, Math.floor(window.innerWidth * dpr));
-  const h = Math.max(1, Math.floor(window.innerHeight * dpr));
+window.addEventListener("keyup", (e) => {
+  if (e.code === "KeyW") keys.w = false;
+  if (e.code === "KeyA") keys.a = false;
+  if (e.code === "KeyS") keys.s = false;
+  if (e.code === "KeyD") keys.d = false;
+});
 
-  renderer.setSize(w, h, false);
-  composer.setSize(w, h);
+// mouse for iMouse (optional)
+let mouseDown = false;
+renderer.domElement.addEventListener("mousedown", (e) => {
+  mouseDown = true;
+  setMouse(e);
+});
+window.addEventListener("mouseup", () => (mouseDown = false));
+window.addEventListener("mousemove", (e) => setMouse(e));
 
-  camera.aspect = w/h;
-  camera.updateProjectionMatrix();
-
-  bloom.setSize(w,h);
-  vignetteLetterbox.uniforms.resolution.value.set(w,h);
-  screenUniforms.iResolution.value.set(w,h);
-
-  resEl.textContent = `${w}×${h}`;
+function setMouse(e) {
+  // Map to viewport pixels
+  const x = e.clientX;
+  const y = window.innerHeight - e.clientY;
+  const z = mouseDown ? 1 : 0;
+  const w = mouseDown ? 1 : 0;
+  for (const a of artworks) a.material.uniforms.iMouse.value.set(x, y, z, w);
 }
-window.addEventListener("resize", resize, { passive: true });
-resize();
 
-// ---------- pointer-driven parallax (front view, always focuses on art) ----------
-const pointer = { x: 0, y: 0, tx: 0, ty: 0 };
+// --- enter / pointer lock
+enterBtn.addEventListener("click", () => {
+  overlay.classList.add("hidden");
+  controls.lock();
+});
 
-function onMove(e){
-  const nx = (e.clientX / window.innerWidth) * 2 - 1;
-  const ny = -((e.clientY / window.innerHeight) * 2 - 1);
-  pointer.tx = THREE.MathUtils.clamp(nx, -1, 1);
-  pointer.ty = THREE.MathUtils.clamp(ny, -1, 1);
+document.addEventListener("click", () => {
+  if (!controls.isLocked && mode === "museum" && overlay.classList.contains("hidden")) {
+    controls.lock();
+  }
+});
+
+controls.addEventListener("lock", () => {
+  setHint("", false);
+});
+
+controls.addEventListener("unlock", () => {
+  if (mode === "museum") setHint("Click to resume", true);
+});
+
+// --- inspect logic
+function nearestArtwork() {
+  const p = museumCamera.position;
+  let best = null;
+  let bestDist = Infinity;
+
+  for (const a of artworks) {
+    const wp = new THREE.Vector3();
+    a.group.getWorldPosition(wp);
+    const d = wp.distanceTo(p);
+    if (d < bestDist) {
+      bestDist = d;
+      best = a;
+    }
+  }
+  return { best, dist: bestDist };
 }
-window.addEventListener("pointermove", onMove, { passive: true });
 
-function damp(a, b, k){ return a + (b-a)*k; }
+function tryInspect() {
+  const { best, dist } = nearestArtwork();
+  if (!best || dist > 2.3) return;
+  openViewer(best);
+}
 
-// ---------- FPS ----------
-let fpsSmoothed = 0, frames = 0, t0 = performance.now();
-function tickFps(){
-  frames++;
-  const t = performance.now();
-  const dt = t - t0;
-  if(dt > 500){
-    const fps = (frames/dt)*1000;
-    fpsSmoothed = fpsSmoothed ? (0.85*fpsSmoothed + 0.15*fps) : fps;
-    fpsEl.textContent = `${fpsSmoothed.toFixed(1)} fps`;
-    frames = 0;
-    t0 = t;
+function openViewer(art) {
+  mode = "viewer";
+  selectedArtwork = art;
+
+  // show UI
+  viewer.classList.remove("hidden");
+  viewerTitle.textContent = art.data.title;
+  viewerMeta.textContent = `by ${art.data.author}`;
+  viewerDesc.textContent = art.data.description;
+
+  // switch to full-screen quad with same material
+  viewerQuad.material = art.material;
+
+  // release pointer lock so user can click "Back"
+  if (controls.isLocked) controls.unlock();
+  setHint("Press Esc to go back", true);
+}
+
+function closeViewer() {
+  mode = "museum";
+  selectedArtwork = null;
+  viewer.classList.add("hidden");
+  viewerQuad.material = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  setHint("Click to resume", true);
+}
+
+viewerClose.addEventListener("click", closeViewer);
+
+// --- resize
+window.addEventListener("resize", () => {
+  museumCamera.aspect = window.innerWidth / window.innerHeight;
+  museumCamera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  for (const a of artworks) {
+    a.material.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight, 1);
+  }
+});
+
+// --- animation loop
+const clock = new THREE.Clock();
+
+function clampPlayer() {
+  // keep player inside corridor + keep height fixed
+  const p = museumCamera.position;
+  p.y = 1.65;
+  p.x = THREE.MathUtils.clamp(p.x, -corridor.halfWidth + 0.4, corridor.halfWidth - 0.4);
+
+  // keep within Z bounds
+  const minZ = -(corridor.segmentLen * corridor.segments) - 4.0;
+  const maxZ = 6.0;
+  p.z = THREE.MathUtils.clamp(p.z, minZ, maxZ);
+}
+
+function updateMovement(dt) {
+  if (!controls.isLocked) return;
+
+  // desired direction in local space
+  dir.set(0, 0, 0);
+  if (keys.w) dir.z -= 1;
+  if (keys.s) dir.z += 1;
+  if (keys.a) dir.x -= 1;
+  if (keys.d) dir.x += 1;
+  dir.normalize();
+
+  // accelerate
+  const speed = 5.5;
+  const accel = 18.0;
+  const damping = 10.0;
+
+  // get forward/right vectors from camera
+  const forward = new THREE.Vector3();
+  museumCamera.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
+
+  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).multiplyScalar(-1);
+
+  const wish = new THREE.Vector3()
+    .addScaledVector(forward, dir.z)
+    .addScaledVector(right, dir.x)
+    .normalize();
+
+  vel.addScaledVector(wish, accel * dt * speed);
+  vel.addScaledVector(vel, -damping * dt); // friction
+
+  controls.moveRight(vel.x * dt);
+  controls.moveForward(vel.z * dt);
+
+  clampPlayer();
+}
+
+function updateHints() {
+  if (mode !== "museum") return;
+
+  const { best, dist } = nearestArtwork();
+  if (best && dist < 2.3) {
+    setHint(`Press E to inspect: ${best.data.title}`, true);
+  } else if (controls.isLocked) {
+    setHint("", false);
   }
 }
 
-// ---------- loop ----------
-function loop(){
-  requestAnimationFrame(loop);
+function animate() {
+  const dt = Math.min(clock.getDelta(), 0.033);
+  const t = clock.elapsedTime;
 
-  const time = performance.now() * 0.001;
-  screenUniforms.iTime.value = time;
+  // update shader uniforms
+  for (const a of artworks) a.material.uniforms.iTime.value = t;
 
-  // subtle breathing in shafts + lights
-  rays[0].material.opacity = 0.09 + 0.03*(0.5+0.5*Math.sin(time*0.7));
-  rays[1].material.opacity = 0.08 + 0.03*(0.5+0.5*Math.sin(time*0.6+1.1));
-  rays[2].material.opacity = 0.07 + 0.03*(0.5+0.5*Math.sin(time*0.55+2.0));
-  screenLight.intensity = 6.6 + 1.2*(0.5+0.5*Math.sin(time*0.35));
-  rim.intensity = 1.7 + 0.5*(0.5+0.5*Math.sin(time*0.52));
+  updateMovement(dt);
+  updateHints();
 
-  // parallax
-  pointer.x = damp(pointer.x, pointer.tx, PARALLAX.damping);
-  pointer.y = damp(pointer.y, pointer.ty, PARALLAX.damping);
-
-  const px = pointer.x * PARALLAX.maxX;
-  const py = pointer.y * PARALLAX.maxY;
-  const pz = (Math.abs(pointer.x)+Math.abs(pointer.y))*0.5 * PARALLAX.maxZ;
-
-  camera.position.set(
-    CAM_BASE.pos.x + px,
-    CAM_BASE.pos.y + py,
-    CAM_BASE.pos.z - pz
-  );
-  camera.lookAt(CAM_BASE.look);
-
-  composer.render();
-  tickFps();
+  if (mode === "museum") {
+    renderer.render(museumScene, museumCamera);
+  } else {
+    // viewer mode
+    renderer.render(viewerScene, viewerCamera);
+  }
 }
-loop();
+
+renderer.setAnimationLoop(animate);
