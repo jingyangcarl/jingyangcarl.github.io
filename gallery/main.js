@@ -1,5 +1,5 @@
-import * as THREE from "https://unpkg.com/three@0.182.0/build/three.module.js";
-import { PointerLockControls } from "https://unpkg.com/three@0.182.0/examples/jsm/controls/PointerLockControls.js";
+import * as THREE from "three";
+import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 import { GALLERY } from "./gallery.js";
 
 const overlay = document.getElementById("overlay");
