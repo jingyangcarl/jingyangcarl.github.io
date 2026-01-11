@@ -3,106 +3,33 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CineShader Lite (Vanilla)</title>
+  <title>Cinematic Hall (Three.js)</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <canvas id="gl"></canvas>
+  <canvas id="c"></canvas>
 
-  <div id="ui">
-    <div class="topbar">
-      <div class="brand">
-        <div class="dot"></div>
-        <div>
-          <div class="title">CineShader Lite</div>
-          <div class="subtitle">Shadertoy-style shader player • vanilla JS</div>
-        </div>
-      </div>
-
-      <div class="controls">
-        <label class="field">
-          <span>Shadertoy ID</span>
-          <input id="shaderId" placeholder="e.g. ltfyWf" />
-        </label>
-
-        <label class="field">
-          <span>API Key</span>
-          <input id="apiKey" placeholder="your Shadertoy app key" />
-        </label>
-
-        <button id="btnLoad" class="btn">Load</button>
-        <button id="btnCompile" class="btn primary">Compile</button>
-
-        <label class="field inline">
-          <input type="checkbox" id="cinematic" checked />
-          <span>Cinematic</span>
-        </label>
-
-        <label class="field">
-          <span>Quality</span>
-          <select id="quality">
-            <option value="0.75">Low</option>
-            <option value="1" selected>Mid</option>
-            <option value="1.5">High</option>
-            <option value="2">Ultra</option>
-          </select>
-        </label>
-
-        <button id="btnPlay" class="btn">Pause</button>
-        <button id="btnShot" class="btn">Snapshot</button>
-      </div>
-    </div>
-
-    <div class="main">
-      <div class="editorPane">
-        <div class="paneHeader">
-          <div class="paneTitle">Fragment Shader (Shadertoy-style)</div>
-          <div class="slotbar">
-            <label class="field">
-              <span>Slot</span>
-              <select id="slot">
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-              </select>
-            </label>
-            <button id="btnSaveSlot" class="btn">Save Slot</button>
-            <button id="btnLoadSlot" class="btn">Load Slot</button>
-            <button id="btnReset" class="btn">Reset</button>
-          </div>
-        </div>
-
-        <textarea id="code" spellcheck="false"></textarea>
-
-        <div class="statusbar">
-          <div id="statusLeft">Ready</div>
-          <div class="statusRight">
-            <span id="fps">— fps</span>
-            <span class="sep">•</span>
-            <span id="res">—</span>
-          </div>
-        </div>
-
-        <pre id="errors" class="errors hidden"></pre>
-      </div>
-
-      <div class="helpPane">
-        <div class="paneHeader">
-          <div class="paneTitle">Help</div>
-        </div>
-
-        <div class="help">
-          <p><b>Uniforms</b>: iResolution (vec3), iTime (float), iTimeDelta (float), iFrame (int), iMouse (vec4), iDate (vec4).</p>
-          <p><b>Entry</b>: implement <code>mainImage(out vec4 fragColor, in vec2 fragCoord)</code> like Shadertoy.</p>
-          <p><b>Limitations</b>: no Shadertoy textures/audio/buffers in this lite version. Many Shadertoy shaders rely on those inputs.</p>
-          <p><b>Tip</b>: If a shader doesn’t compile, try a simpler one or remove buffer passes.</p>
-          <hr/>
-          <p class="muted">GitHub Pages: commit these files, then enable Pages in repo settings (Deploy from branch).</p>
-        </div>
-      </div>
+  <div id="hud">
+    <div class="pill">
+      <b>Cinematic Hall</b>
+      <span class="sep">•</span>
+      <span id="fps">— fps</span>
+      <span class="sep">•</span>
+      <span id="res">—</span>
+      <span class="sep">•</span>
+      <span class="hint">Press <kbd>C</kbd> toggle auto camera</span>
     </div>
   </div>
 
-  <script src="./app.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
