@@ -22,7 +22,12 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
-document.body.appendChild(renderer.domElement);
+const app = document.getElementById("app");
+app.prepend(renderer.domElement); // put canvas behind HUD/overlay
+renderer.domElement.style.position = "absolute";
+renderer.domElement.style.inset = "0";
+renderer.domElement.style.zIndex = "0";
+
 
 // --- scenes/cameras
 const museumScene = new THREE.Scene();
