@@ -3,21 +3,31 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cinematic Hall (Three.js)</title>
+  <title>Shader Gallery Shot</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <canvas id="c"></canvas>
 
+  <!-- Right-side typography overlay (DOM, not 3D) -->
+  <div id="overlay">
+    <div class="panel">
+      <div class="title">Domain Warping</div>
+      <div class="sub">
+        A domain distortion noise technique invented by<br/>
+        Inigo Quilez
+      </div>
+      <div class="rule"></div>
+    </div>
+  </div>
+
   <div id="hud">
     <div class="pill">
-      <b>Cinematic Hall</b>
+      <b>Gallery Shot</b>
       <span class="sep">•</span>
       <span id="fps">— fps</span>
       <span class="sep">•</span>
       <span id="res">—</span>
-      <span class="sep">•</span>
-      <span class="hint">Press <kbd>C</kbd> toggle auto camera</span>
     </div>
   </div>
 

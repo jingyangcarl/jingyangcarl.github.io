@@ -1,5 +1,52 @@
-html, body { height: 100%; margin: 0; background: #0b0d10; overflow: hidden; }
+html, body { height: 100%; margin: 0; background: #05070a; overflow: hidden; }
 canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+#overlay{
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* right side fade like your reference */
+#overlay::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    radial-gradient(1200px 700px at 18% 55%, rgba(120,190,210,0.14), rgba(0,0,0,0) 55%),
+    linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.45) 45%, rgba(0,0,0,0.88) 78%, rgba(0,0,0,0.96) 100%);
+}
+
+.panel{
+  position: relative;
+  width: min(46vw, 760px);
+  padding: 18vh 6vw 0 0;
+  color: rgba(255,255,255,0.92);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+}
+
+.title{
+  font-size: clamp(42px, 5vw, 74px);
+  font-weight: 300;
+  letter-spacing: 0.06em;
+}
+
+.sub{
+  margin-top: 18px;
+  font-size: 16px;
+  line-height: 1.65;
+  color: rgba(255,255,255,0.70);
+  letter-spacing: 0.08em;
+}
+
+.rule{
+  margin-top: 16px;
+  width: 220px;
+  height: 1px;
+  background: rgba(255,255,255,0.28);
+}
 
 #hud {
   position: fixed;
@@ -10,7 +57,6 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   font-size: 12px;
   pointer-events: none;
 }
-
 .pill {
   display: inline-flex;
   align-items: center;
@@ -21,14 +67,4 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
   background: rgba(16,18,22,0.55);
   backdrop-filter: blur(10px);
 }
-
 .sep { opacity: 0.5; }
-.hint { opacity: 0.75; margin-left: 6px; }
-
-kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  padding: 2px 6px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.07);
-}
