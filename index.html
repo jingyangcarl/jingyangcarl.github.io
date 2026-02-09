@@ -234,6 +234,8 @@
                     cameraObject.updateProjectionMatrix();
                 }
             }).listen();
+            gui_side.add( args.render.sideRender, 'miniScalar', 2, 8, 1 ).name('Mini Inset Scalar').listen();
+            gui_side.add( args.render.sideRender, 'illuminationView', { 'Selected Camera': 'selected', 'Overall Camera': 'overall' } ).name('Illumination View').listen();
             // Camera settings grouped under Side Renderer -> Camera
             let gui_camera = gui_render.addFolder('Camera');
             gui_camera.open();
@@ -464,6 +466,7 @@
                 point_light.name = 'led_light';
                 point_light.power = 1700;
                 point_light.visible = false;
+                point_light.layers.enable(2); // allow illumination preview objects to be lit
                 lightboard.add(point_light);
                 
                 lightboard.add(ledsGroup);
@@ -564,6 +567,10 @@
             rig.visible = args.lightstage.rig.show;
             scene.add( rig );
 
+            if (reset && typeof setupIlluminationPreview === 'function') {
+                setupIlluminationPreview();
+            }
+
         }
 
         function setupBunny() {
@@ -604,6 +611,66 @@
                 }
 
             } );
+        }
+
+        function setupIlluminationPreview() {
+            illuminationSceneGrey = new THREE.Scene();
+            illuminationSceneChrome = new THREE.Scene();
+
+            const geom = new THREE.SphereGeometry(0.08, 32, 32);
+            const greyMat = new THREE.MeshStandardMaterial({
+                color: 0xb0b0b0,
+                metalness: 0.0,
+                roughness: 1.0,
+            });
+            const chromeMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                metalness: 1.0,
+                roughness: 0.1,
+            });
+
+            greyBall = new THREE.Mesh(geom, greyMat);
+            chromeBall = new THREE.Mesh(geom, chromeMat);
+            greyBall.position.set(0, 0, 0);
+            chromeBall.position.set(0, 0, 0);
+
+            illuminationSceneGrey.add(greyBall);
+            illuminationSceneChrome.add(chromeBall);
+
+            illuminationCameraGrey = new THREE.PerspectiveCamera(20, 1, 0.1, 10);
+            illuminationCameraChrome = new THREE.PerspectiveCamera(20, 1, 0.1, 10);
+            illuminationCameraGrey.position.set(0, 0.25, 0.6);
+            illuminationCameraChrome.position.set(0, 0.25, 0.6);
+            illuminationCameraGrey.lookAt(0, 0, 0);
+            illuminationCameraChrome.lookAt(0, 0, 0);
+
+            illuminationLightsGrey = [];
+            illuminationLightsChrome = [];
+            if (lightboards && lightboards.children && lightboards.children.length > 0) {
+                lightboards.children.forEach((lightboard) => {
+                    const srcLight = lightboard.getObjectByName('led_light');
+                    if (!srcLight) {
+                        illuminationLightsGrey.push(null);
+                        illuminationLightsChrome.push(null);
+                        return;
+                    }
+                    const lightGrey = new THREE.PointLight(srcLight.color.clone(), srcLight.intensity);
+                    lightGrey.power = srcLight.power;
+                    lightGrey.visible = srcLight.visible;
+                    srcLight.getWorldPosition(_illuminationLightPos);
+                    lightGrey.position.copy(_illuminationLightPos);
+
+                    const lightChrome = new THREE.PointLight(srcLight.color.clone(), srcLight.intensity);
+                    lightChrome.power = srcLight.power;
+                    lightChrome.visible = srcLight.visible;
+                    lightChrome.position.copy(_illuminationLightPos);
+
+                    illuminationSceneGrey.add(lightGrey);
+                    illuminationSceneChrome.add(lightChrome);
+                    illuminationLightsGrey.push(lightGrey);
+                    illuminationLightsChrome.push(lightChrome);
+                });
+            }
         }
 
         function setupRayCaster() {
@@ -838,6 +905,26 @@
             }
         }
 
+        function syncIlluminationLights() {
+            if (!lightboards || !illuminationLightsGrey || !illuminationLightsChrome) return;
+            if (illuminationLightsGrey.length === 0 || illuminationLightsChrome.length === 0) return;
+            lightboards.children.forEach((lightboard, i) => {
+                const srcLight = lightboard.getObjectByName('led_light');
+                const greyLight = illuminationLightsGrey[i];
+                const chromeLight = illuminationLightsChrome[i];
+                if (!srcLight || !greyLight || !chromeLight) return;
+                srcLight.getWorldPosition(_illuminationLightPos);
+                greyLight.position.copy(_illuminationLightPos);
+                chromeLight.position.copy(_illuminationLightPos);
+                greyLight.visible = srcLight.visible;
+                chromeLight.visible = srcLight.visible;
+                greyLight.color.copy(srcLight.color);
+                chromeLight.color.copy(srcLight.color);
+                greyLight.power = srcLight.power;
+                chromeLight.power = srcLight.power;
+            });
+        }
+
         function setupOrbitControls() {
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = args.controls.enableDamping; // Enable inertia
@@ -895,6 +982,7 @@
             }
 
             updatePattern();
+            syncIlluminationLights();
 
             // inset scene
             // debugger;
@@ -906,6 +994,57 @@
                 renderer.setViewport( 20, 20, insetWidth, insetHeight);
                 renderer.render( scene, cameraObject );
                 renderer.setScissorTest( false );
+            }
+
+            // illumination preview inside the inset (lower-left corner)
+            if (args.render.sideRender.show && illuminationCameraGrey && illuminationCameraChrome) {
+                const baseCamera = (args.render.sideRender.illuminationView === 'overall') ? camera : cameraObject;
+                if (baseCamera) {
+                    _illuminationPos.set(0, 0, 0);
+                    _illuminationDir.copy(baseCamera.position).sub(_illuminationPos);
+                    if (_illuminationDir.lengthSq() < 1e-6) {
+                        _illuminationDir.set(0, 0, 1);
+                    } else {
+                        _illuminationDir.normalize();
+                    }
+                    _illuminationOffset.copy(baseCamera.up).normalize().multiplyScalar(0.25);
+                    _illuminationDir.add(_illuminationOffset).normalize();
+                    illuminationCameraGrey.position.copy(_illuminationPos)
+                        .addScaledVector(_illuminationDir, 0.6);
+                    illuminationCameraChrome.position.copy(illuminationCameraGrey.position);
+                    illuminationCameraGrey.lookAt(_illuminationPos);
+                    illuminationCameraChrome.lookAt(_illuminationPos);
+                }
+                // 2:1 rectangle to fit two spheres side-by-side
+                const miniHeight = Math.max(60, Math.floor(insetHeight / (args.render.sideRender.miniScalar || 4)));
+                const miniWidth = Math.max(120, Math.floor(miniHeight * 2));
+                const clampedWidth = Math.min(miniWidth, insetWidth);
+                const clampedHeight = Math.min(miniHeight, insetHeight);
+                const miniX = 20;
+                const miniY = 20;
+                const halfWidth = Math.max(1, Math.floor(clampedWidth / 2));
+                const rightWidth = Math.max(1, clampedWidth - halfWidth);
+
+                renderer.setScissorTest(true);
+                renderer.setClearColor(0x000000, 0);
+                // clear only the mini preview rect (not the full inset)
+                renderer.setScissor(miniX, miniY, clampedWidth, clampedHeight);
+                renderer.setViewport(miniX, miniY, clampedWidth, clampedHeight);
+                renderer.clear(true, true, true);
+
+                renderer.setScissor(miniX, miniY, halfWidth, clampedHeight);
+                renderer.setViewport(miniX, miniY, halfWidth, clampedHeight);
+                illuminationCameraGrey.aspect = halfWidth / clampedHeight;
+                illuminationCameraGrey.updateProjectionMatrix();
+                renderer.render(illuminationSceneGrey, illuminationCameraGrey);
+
+                renderer.setScissor(miniX + halfWidth, miniY, rightWidth, clampedHeight);
+                renderer.setViewport(miniX + halfWidth, miniY, rightWidth, clampedHeight);
+                illuminationCameraChrome.aspect = rightWidth / clampedHeight;
+                illuminationCameraChrome.updateProjectionMatrix();
+                renderer.render(illuminationSceneChrome, illuminationCameraChrome);
+
+                renderer.setScissorTest(false);
             }
         }
 
@@ -953,6 +1092,10 @@
         // Global variables
         let scene, camera, cameraObject, renderer, labelRenderer, gui, stats;
         let rig, lightboards;
+        let illuminationSceneGrey, illuminationSceneChrome;
+        let illuminationCameraGrey, illuminationCameraChrome;
+        let illuminationLightsGrey = [], illuminationLightsChrome = [];
+        let chromeBall, greyBall;
         // multiple inset cameras and helpers
         let cameraHelper;
         let cameraViews = [];
@@ -975,6 +1118,10 @@
         const _scale = new THREE.Vector3( 1, 1, 1 );
         const _matrix = new THREE.Matrix4();
         const _axis = new THREE.Vector3();
+        const _illuminationDir = new THREE.Vector3();
+        const _illuminationPos = new THREE.Vector3();
+        const _illuminationOffset = new THREE.Vector3();
+        const _illuminationLightPos = new THREE.Vector3();
 
         let render_mode = 'points';
         const args_init = {
@@ -1044,6 +1191,8 @@
                 sideRender: {
                     show: true,
                     insetScalar: 3,
+                    miniScalar: 4,
+                    illuminationView: 'selected',
                 },
                 camera: {
                     showCamera: true,
@@ -1197,6 +1346,7 @@
         setupLightStage();
         setupBunny();
         setupRayCaster();
+        setupIlluminationPreview();
         setupOrbitControls();
 
         // create multiple cameras arranged in a 'W' shape and their helpers/markers
