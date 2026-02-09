@@ -163,6 +163,45 @@
             labelRenderer.domElement.style.top = 0;
             labelRenderer.domElement.style.pointerEvents = 'none'; // https://stackoverflow.com/questions/71860355/css2renderer-is-not-working-with-webgl-renderer
             document.body.appendChild(labelRenderer.domElement);
+
+            labelMaskSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            labelMaskSvg.setAttribute('id', 'labelMaskSvg');
+            labelMaskSvg.setAttribute('width', String(window.innerWidth));
+            labelMaskSvg.setAttribute('height', String(window.innerHeight));
+            labelMaskSvg.style.position = 'absolute';
+            labelMaskSvg.style.left = '0';
+            labelMaskSvg.style.top = '0';
+            labelMaskSvg.style.width = `${window.innerWidth}px`;
+            labelMaskSvg.style.height = `${window.innerHeight}px`;
+            labelMaskSvg.style.pointerEvents = 'none';
+            labelMaskSvg.style.opacity = '0';
+
+            const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
+            mask.setAttribute('id', 'labelMask');
+            mask.setAttribute('maskUnits', 'userSpaceOnUse');
+
+            labelMaskFullRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            labelMaskFullRect.setAttribute('fill', 'white');
+            mask.appendChild(labelMaskFullRect);
+
+            labelMaskInsetRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            labelMaskInsetRect.setAttribute('fill', 'black');
+            mask.appendChild(labelMaskInsetRect);
+
+            labelMaskSvg.appendChild(mask);
+            document.body.appendChild(labelMaskSvg);
+
+            cameraInsetLabel = document.createElement('div');
+            cameraInsetLabel.id = 'cameraInsetLabel';
+            cameraInsetLabel.textContent = 'Camera-space view — click handles to switch.';
+            cameraInsetLabel.style.position = 'absolute';
+            cameraInsetLabel.style.left = '20px';
+            cameraInsetLabel.style.bottom = '0px';
+            cameraInsetLabel.style.color = '#ffffff';
+            cameraInsetLabel.style.fontSize = '12px';
+            cameraInsetLabel.style.lineHeight = '16px';
+            cameraInsetLabel.style.pointerEvents = 'none';
+            document.body.appendChild(cameraInsetLabel);
         }
 
         function setupGUI() {
@@ -219,13 +258,15 @@
             } ).listen();
             let gui_side = gui_render.addFolder('Side Renderer');
             gui_side.open();
-            gui_side.add( args.render.sideRender, 'show').name('Show Side Render').onChange(v => {
+            gui_side.add( args.render.sideRender, 'show').name('Render Selected Camera').onChange(v => {
                 // keep existing behavior if rendererObject exists, otherwise just toggle flag
                 if (typeof rendererObject !== 'undefined' && rendererObject && rendererObject.domElement) {
                     rendererObject.domElement.style.display = v ? 'block' : 'none';
                 }
+                updateLabelMask();
             }).listen();
-            gui_side.add( args.render.sideRender, 'insetScalar', 2, 8, 1 ).name('Inset Scalar').onChange(v => {
+            gui_side.add( args.render.sideRender, 'showIllumination').name('Render Illumination').listen();
+            gui_side.add( args.render.sideRender, 'insetScalar', 2, 8, 1 ).name('Camera Inset Scalar').onChange(v => {
                 // recompute inset sizes and update camera aspect
                 insetWidth = window.innerHeight / v;
                 insetHeight = window.innerHeight / v;
@@ -233,9 +274,10 @@
                     cameraObject.aspect = insetWidth / insetHeight;
                     cameraObject.updateProjectionMatrix();
                 }
+                updateCameraInsetLabel();
+                updateLabelMask();
             }).listen();
-            gui_side.add( args.render.sideRender, 'miniScalar', 2, 8, 1 ).name('Mini Inset Scalar').listen();
-            gui_side.add( args.render.sideRender, 'illuminationView', { 'Selected Camera': 'selected', 'Overall Camera': 'overall' } ).name('Illumination View').listen();
+            gui_side.add( args.render.sideRender, 'miniScalar', 2, 8, 1 ).name('Illumination Inset Scalar').listen();
             // Camera settings grouped under Side Renderer -> Camera
             let gui_camera = gui_render.addFolder('Camera');
             gui_camera.open();
@@ -275,6 +317,10 @@
                     selectCamera(selectedCameraIndex);
                 }
             }).listen();
+
+            let gui_illumination = gui_render.addFolder('Illumination');
+            gui_illumination.open();
+            gui_illumination.add( args.render.sideRender, 'illuminationView', { 'Selected Camera': 'selected', 'Perspective Camera': 'overall' } ).name('Illumination Coords').listen();
 
             let gui_projects = gui.addFolder('Projects');
             gui_projects.open();
@@ -987,6 +1033,7 @@
             // inset scene
             // debugger;
             if (args.render.sideRender.show) {
+                if (cameraInsetLabel) cameraInsetLabel.style.display = 'block';
                 renderer.setClearColor( 0x000000, 2 );
                 renderer.clearDepth(); // important!
                 renderer.setScissorTest( true );
@@ -994,10 +1041,12 @@
                 renderer.setViewport( 20, 20, insetWidth, insetHeight);
                 renderer.render( scene, cameraObject );
                 renderer.setScissorTest( false );
+            } else if (cameraInsetLabel) {
+                cameraInsetLabel.style.display = 'none';
             }
 
             // illumination preview inside the inset (lower-left corner)
-            if (args.render.sideRender.show && illuminationCameraGrey && illuminationCameraChrome) {
+            if (args.render.sideRender.showIllumination && illuminationCameraGrey && illuminationCameraChrome) {
                 const baseCamera = (args.render.sideRender.illuminationView === 'overall') ? camera : cameraObject;
                 if (baseCamera) {
                     _illuminationPos.set(0, 0, 0);
@@ -1066,6 +1115,58 @@
             setupOrbitControls();
         }
 
+        function updateCameraInsetLabel() {
+            if (!cameraInsetLabel) return;
+            const insetH = (typeof insetHeight === 'number') ? insetHeight : 0;
+            const bottom = 20 + insetH + 6;
+            cameraInsetLabel.style.bottom = `${bottom}px`;
+            cameraInsetLabel.style.display = args.render.sideRender.show ? 'block' : 'none';
+        }
+
+        function updateLabelMask() {
+            if (!labelRenderer || !labelRenderer.domElement) return;
+            if (!labelMaskSvg || !labelMaskFullRect || !labelMaskInsetRect) return;
+
+            if (!args.render.sideRender.show) {
+                labelRenderer.domElement.style.mask = 'none';
+                labelRenderer.domElement.style.webkitMask = 'none';
+                labelRenderer.domElement.style.maskImage = 'none';
+                labelRenderer.domElement.style.webkitMaskImage = 'none';
+                return;
+            }
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const insetW = (typeof insetWidth === 'number') ? insetWidth : 0;
+            const insetH = (typeof insetHeight === 'number') ? insetHeight : 0;
+            const insetX = 20;
+            const insetY = Math.max(0, height - (20 + insetH));
+
+            labelMaskSvg.setAttribute('width', String(width));
+            labelMaskSvg.setAttribute('height', String(height));
+            labelMaskSvg.style.width = `${width}px`;
+            labelMaskSvg.style.height = `${height}px`;
+
+            labelMaskFullRect.setAttribute('x', '0');
+            labelMaskFullRect.setAttribute('y', '0');
+            labelMaskFullRect.setAttribute('width', String(width));
+            labelMaskFullRect.setAttribute('height', String(height));
+
+            labelMaskInsetRect.setAttribute('x', String(insetX));
+            labelMaskInsetRect.setAttribute('y', String(insetY));
+            labelMaskInsetRect.setAttribute('width', String(insetW));
+            labelMaskInsetRect.setAttribute('height', String(insetH));
+
+            labelRenderer.domElement.style.mask = 'url(#labelMask)';
+            labelRenderer.domElement.style.webkitMask = 'url(#labelMask)';
+            labelRenderer.domElement.style.maskImage = 'url(#labelMask)';
+            labelRenderer.domElement.style.webkitMaskImage = 'url(#labelMask)';
+            labelRenderer.domElement.style.maskRepeat = 'no-repeat';
+            labelRenderer.domElement.style.webkitMaskRepeat = 'no-repeat';
+            labelRenderer.domElement.style.maskSize = '100% 100%';
+            labelRenderer.domElement.style.webkitMaskSize = '100% 100%';
+        }
+
         function onWindowResize(){
             
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -1081,6 +1182,9 @@
                 cameraObject.far = args.render.camera.cameraFar;
             }
             cameraObject.updateProjectionMatrix();
+
+            updateCameraInsetLabel();
+            updateLabelMask();
         }
 
         
@@ -1091,6 +1195,8 @@
 
         // Global variables
         let scene, camera, cameraObject, renderer, labelRenderer, gui, stats;
+        let cameraInsetLabel;
+        let labelMaskSvg, labelMaskFullRect, labelMaskInsetRect;
         let rig, lightboards;
         let illuminationSceneGrey, illuminationSceneChrome;
         let illuminationCameraGrey, illuminationCameraChrome;
@@ -1190,6 +1296,7 @@
                 },
                 sideRender: {
                     show: true,
+                    showIllumination: true,
                     insetScalar: 3,
                     miniScalar: 4,
                     illuminationView: 'selected',
@@ -1197,7 +1304,7 @@
                 camera: {
                     showCamera: true,
                     cameraFar: 2,
-                    cameraCount: 1,
+                    cameraCount: 2,
                     cameraDistance: 0.6,
                 }
             },
@@ -1348,6 +1455,7 @@
         setupRayCaster();
         setupIlluminationPreview();
         setupOrbitControls();
+        updateLabelMask();
 
         // create multiple cameras arranged in a 'W' shape and their helpers/markers
         function createCameraViews() {
