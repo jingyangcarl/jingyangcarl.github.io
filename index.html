@@ -514,17 +514,32 @@
             let geometry = new THREE.IcosahedronGeometry(args.lightstage.radius, args.lightstage.ledDensity-1);
             const positions = getVertices(geometry);
 
-            // Convert to polar coordinates and sort
-            positions.sort((a, b) => {
-                if (Math.abs(a.z - b.z) > 0.01) {
-                    return b.z - a.z; // Sort by z-coordinate in descending order if z-coordinates are not equal
-                } else {
-                    // If z-coordinates are equal, sort by angle in the x-y plane
-                    const angleA = Math.atan2(a.x, a.y);
-                    const angleB = Math.atan2(b.x, b.y);
-                    return angleB - angleA;
-                }
-            });
+            // Convert to spherical coordinates and sort in a spiral order (theta bands with alternating phi direction)
+            const spiralSort = (pts) => {
+                const radius = args.lightstage.radius || 1;
+                const bands = Math.max(6, args.lightstage.ledDensity * 4);
+                const thetaStep = Math.PI / bands;
+
+                const spherical = (p) => {
+                    const r = Math.max(1e-6, p.length());
+                    const theta = Math.acos(THREE.MathUtils.clamp(p.z / r, -1, 1)); // 0..pi
+                    let phi = Math.atan2(p.y, p.x); // -pi..pi
+                    if (phi < 0) phi += Math.PI * 2; // 0..2pi
+                    const band = Math.round(theta / thetaStep);
+                    return { theta, phi, band };
+                };
+
+                return pts.sort((a, b) => {
+                    const sa = spherical(a);
+                    const sb = spherical(b);
+                    if (sa.band !== sb.band) return sa.band - sb.band; // from north pole to south pole
+                    // keep a consistent phi direction for all bands
+                    if (Math.abs(sa.phi - sb.phi) > 1e-6) return sa.phi - sb.phi;
+                    return sa.theta - sb.theta;
+                });
+            };
+
+            spiralSort(positions);
             
 
             // Add light boards to the scene
