@@ -299,6 +299,7 @@
                 div.style.fontSize = '12px';
                 div.style.fontFamily = 'Monospace';
                 div.style.textShadow = '0 0 4px rgba(0,0,0,0.6)';
+                if (axesLabelElements) axesLabelElements.push(div);
                 return new CSS2DObject(div);
             };
             const xLabel = axisLabel('X', '#ff5555');
@@ -402,9 +403,15 @@
             togglePatternControls();
 
             let gui_render = gui.addFolder('Render');
-            // gui_render.open();
+            gui_render.open();
             gui_render.add(args.render, 'showAxis').name('Show Axis').onChange(v => {
                 if (axesHelper) axesHelper.visible = v;
+                if (axesLabelGroup) axesLabelGroup.visible = v;
+                if (axesLabelElements && axesLabelElements.length > 0) {
+                    axesLabelElements.forEach(el => {
+                        if (el) el.style.display = v ? 'block' : 'none';
+                    });
+                }
             }).listen();
 
             let gui_ls_object = gui_render.addFolder('Object');
@@ -2018,6 +2025,11 @@
             if (axesLabelGroup) {
                 axesLabelGroup.visible = args.render.showAxis;
             }
+            if (axesLabelElements && axesLabelElements.length > 0) {
+                axesLabelElements.forEach(el => {
+                    if (el) el.style.display = args.render.showAxis ? 'block' : 'none';
+                });
+            }
 
             // update multiple camera helpers and markers visibility/update
             if (cameraHelpersArr && cameraHelpersArr.length > 0) {
@@ -2399,6 +2411,7 @@
         let rig, lightboards;
         let axesHelper;
         let axesLabelGroup;
+        let axesLabelElements = [];
         let illuminationSceneGrey, illuminationSceneChrome;
         let illuminationCameraGrey, illuminationCameraChrome;
         let illuminationLightsGrey = [], illuminationLightsChrome = [];
