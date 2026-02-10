@@ -202,6 +202,20 @@
             cameraInsetLabel.style.lineHeight = '16px';
             cameraInsetLabel.style.pointerEvents = 'none';
             document.body.appendChild(cameraInsetLabel);
+
+            loadingLabel = document.createElement('div');
+            loadingLabel.id = 'loadingLabel';
+            loadingLabel.textContent = 'Loading models…';
+            loadingLabel.style.position = 'absolute';
+            loadingLabel.style.left = '50%';
+            loadingLabel.style.top = '50%';
+            loadingLabel.style.transform = 'translate(-50%, -50%)';
+            loadingLabel.style.color = '#ffffff';
+            loadingLabel.style.fontSize = '16px';
+            loadingLabel.style.lineHeight = '20px';
+            loadingLabel.style.pointerEvents = 'none';
+            loadingLabel.style.display = 'none';
+            document.body.appendChild(loadingLabel);
         }
 
         function setupGUI() {
@@ -212,6 +226,21 @@
             gui_ls.open();
             gui_ls.add( args.lightstage, 'ledDensity', 1, 10, 1 ).name('Light Density').onChange(v => setupLightStage(true)).listen();
             gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => setupLightStage(true)).listen();
+
+            let gui_ls_object = gui_ls.addFolder('Object');
+            gui_ls_object.open();
+            gui_ls_object.add( args.lightstage.object, 'type', {
+                Bunny: 'bunny',
+                Sphere: 'sphere',
+                'Torus Knot': 'torusKnot',
+                Box: 'box'
+            }).name('Model').onChange(v => loadObject(v)).listen();
+            gui_ls_object.add( args.lightstage.object, 'scale', 0.1, 5, 0.1 ).name('Size Scalar').onChange(v => {
+                if (mesh) {
+                    const baseScale = (args.lightstage.object.type === 'bunny') ? 0.01 : 0.25;
+                    mesh.scale.setScalar(baseScale * v);
+                }
+            }).listen();
 
             let gui_ls_lightboard = gui_ls.addFolder('Light Board');
             // gui_ls_lightboard.open();
@@ -324,7 +353,12 @@
 
             let gui_projects = gui.addFolder('Projects');
             gui_projects.open();
-            gui_projects.add( args.projects, 'show').name('Show Projects').onChange(v => sphereLabels.visible = v).listen();
+            gui_projects.add( args.projects, 'show').name('Show Projects').onChange(v => {
+                if (sphereLabels) {
+                    sphereLabels.visible = v;
+                    sphereLabels.children.forEach(child => child.visible = v);
+                }
+            }).listen();
             gui_projects.add( args.projects, 'showTitle').name('Show Title').onChange(v => {
                 const infoDiv = document.getElementById('info');
                 if (infoDiv) infoDiv.style.display = v ? 'block' : 'none';
@@ -619,44 +653,107 @@
 
         }
 
+        function disposeCurrentMesh() {
+            if (helper) {
+                scene.remove(helper);
+                helper = null;
+            }
+            if (mesh) {
+                scene.remove(mesh);
+                if (mesh.geometry && mesh.geometry.disposeBoundsTree) {
+                    mesh.geometry.disposeBoundsTree();
+                }
+                if (mesh.geometry) mesh.geometry.dispose();
+                if (mesh.material) {
+                    if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose());
+                    else mesh.material.dispose();
+                }
+                mesh = null;
+            }
+            bvh = null;
+        }
+
+        function finalizeMesh(newMesh) {
+            mesh = newMesh;
+            scene.add(mesh);
+
+            if (args && args.lightstage && args.lightstage.object && typeof args.lightstage.object.scale === 'number') {
+                const baseScale = (args.lightstage.object.type === 'bunny') ? 0.01 : 0.25;
+                mesh.scale.setScalar(baseScale * args.lightstage.object.scale);
+            }
+
+            const geometry = mesh.geometry;
+            geometry.computeBoundsTree();
+            bvh = geometry.boundsTree;
+
+            if ( ! args.render.rayCaster.useBVH ) {
+                geometry.boundsTree = null;
+            }
+
+            // compute object center (bounding box center) for camera targets
+            const bbox = new THREE.Box3().setFromObject(mesh);
+            bbox.getCenter(objectTarget);
+
+            helper = new MeshBVHHelper( mesh );
+            helper.color.set( 'lightgreen' );
+            helper.visible = args.render.rayCaster.displayHelper;
+            scene.add( helper );
+
+            // recreate camera views now that we know the object target
+            if (typeof createCameraViews === 'function') {
+                createCameraViews();
+                selectCamera(selectedCameraIndex);
+            }
+        }
+
+        function createPrimitiveMesh(type) {
+            let geometry;
+            switch (type) {
+                case 'sphere':
+                    geometry = new THREE.SphereGeometry(0.4, 64, 64);
+                    break;
+                case 'torusKnot':
+                    geometry = new THREE.TorusKnotGeometry(0.25, 0.08, 200, 32);
+                    break;
+                case 'box':
+                default:
+                    geometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+                    break;
+            }
+            const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.0 });
+            const primitive = new THREE.Mesh(geometry, material);
+            primitive.position.set(0, 0, 0);
+            return primitive;
+        }
+
         function setupBunny() {
             // Load bunny
             const loader = new FBXLoader();
+            setLoadingVisible(true);
             loader.load( 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/fbx/stanford-bunny.fbx', object => {
 
-                mesh = object.children[ 0 ];
-
-                const geometry = mesh.geometry;
+                const bunny = object.children[ 0 ];
+                const geometry = bunny.geometry;
                 geometry.translate( 0, 0.5 / 0.0075, 0 );
                 geometry.scale( 0.1, 0.1, 0.1 );
-                geometry.computeBoundsTree();
-                bvh = geometry.boundsTree;
+                bunny.scale.setScalar( 0.0075 );
+                finalizeMesh(bunny);
+                setLoadingVisible(false);
 
-                if ( ! args.render.rayCaster.useBVH ) {
-
-                    geometry.boundsTree = null;
-
-                }
-
-                scene.add( mesh );
-                mesh.scale.setScalar( 0.0075 );
-
-                // compute object center (bounding box center) for camera targets
-                const bbox = new THREE.Box3().setFromObject(mesh);
-                bbox.getCenter(objectTarget);
-
-                helper = new MeshBVHHelper( mesh );
-                helper.color.set( 'lightgreen' );
-                helper.visible = args.render.rayCaster.displayHelper;
-                scene.add( helper );
-
-                // recreate camera views now that we know the object target
-                if (typeof createCameraViews === 'function') {
-                    createCameraViews();
-                    selectCamera(selectedCameraIndex);
-                }
-
+            }, undefined, () => {
+                setLoadingVisible(false);
             } );
+        }
+
+        function loadObject(type) {
+            disposeCurrentMesh();
+            if (type === 'bunny') {
+                setupBunny();
+                return;
+            }
+            const primitive = createPrimitiveMesh(type);
+            finalizeMesh(primitive);
+            setLoadingVisible(false);
         }
 
         function setupIlluminationPreview() {
@@ -760,9 +857,11 @@
                     <a class="icon youtube-logo" href="${project.youtube}" target="_blank"></a>`;
                 div.style.color = 'white';
                 var label = new CSS2DObject(div);
+                label.visible = args.projects.show;
                 sphereLabels.add(label);
             }
 
+            sphereLabels.visible = args.projects.show;
             scene.add( sphereLabels );
         }
 
@@ -1167,6 +1266,11 @@
             labelRenderer.domElement.style.webkitMaskSize = '100% 100%';
         }
 
+        function setLoadingVisible(isVisible) {
+            if (!loadingLabel) return;
+            loadingLabel.style.display = isVisible ? 'block' : 'none';
+        }
+
         function onWindowResize(){
             
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -1196,6 +1300,7 @@
         // Global variables
         let scene, camera, cameraObject, renderer, labelRenderer, gui, stats;
         let cameraInsetLabel;
+        let loadingLabel;
         let labelMaskSvg, labelMaskFullRect, labelMaskInsetRect;
         let rig, lightboards;
         let illuminationSceneGrey, illuminationSceneChrome;
@@ -1235,6 +1340,10 @@
             lightstage: {
                 radius: 1.5,
                 ledDensity: 5,
+                object: {
+                    type: 'bunny',
+                    scale: 1,
+                },
                 lightboard: {
                     show: true,
                     radiusWhiteLED: 0.05,
@@ -1309,7 +1418,7 @@
                 }
             },
             projects: {
-                show: true,
+                show: false,
                 showTitle: true,
                 items: [
                     // Research on Light Transport and Rendering
@@ -1451,11 +1560,12 @@
         if (infoDiv) infoDiv.style.display = args.projects.showTitle ? 'block' : 'none';
         setupStats();
         setupLightStage();
-        setupBunny();
+        loadObject(args.lightstage.object.type);
         setupRayCaster();
         setupIlluminationPreview();
         setupOrbitControls();
         updateLabelMask();
+        setLoadingVisible(args.lightstage.object.type === 'bunny');
 
         // create multiple cameras arranged in a 'W' shape and their helpers/markers
         function createCameraViews() {
