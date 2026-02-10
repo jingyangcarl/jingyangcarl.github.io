@@ -769,13 +769,38 @@
         }
 
         function setupLightStage(reset=false) {
+            const prevLightboards = lightboards;
+            const prevRig = rig;
 
-            if (reset) {
-                // remove all light boards and rig
-                scene.remove(lightboards);
-                scene.remove(rig);
-                args.lightstage.patterns.idx = 0 // reset pattern index
-            }
+            const copyLightboardState = (fromGroup, toGroup) => {
+                if (!fromGroup || !toGroup) return;
+                const count = Math.min(fromGroup.children.length, toGroup.children.length);
+                for (let i = 0; i < count; i++) {
+                    const prevBoard = fromGroup.children[i];
+                    const nextBoard = toGroup.children[i];
+                    if (!prevBoard || !nextBoard) continue;
+
+                    const prevLeds = prevBoard.getObjectByName('leds');
+                    const nextLeds = nextBoard.getObjectByName('leds');
+                    if (prevLeds && nextLeds && prevLeds.geometry && nextLeds.geometry) {
+                        const prevAttr = prevLeds.geometry.attributes.customColor;
+                        const nextAttr = nextLeds.geometry.attributes.customColor;
+                        if (prevAttr && nextAttr && prevAttr.count === nextAttr.count) {
+                            nextAttr.array.set(prevAttr.array);
+                            nextAttr.needsUpdate = true;
+                        }
+                    }
+
+                    const prevLight = prevBoard.getObjectByName('led_light');
+                    const nextLight = nextBoard.getObjectByName('led_light');
+                    if (prevLight && nextLight) {
+                        nextLight.visible = prevLight.visible;
+                        nextLight.color.copy(prevLight.color);
+                        nextLight.intensity = prevLight.intensity;
+                        nextLight.power = prevLight.power;
+                    }
+                }
+            };
 
             function getVertices(mesh) {
                 const position = geometry.attributes.position;
@@ -847,6 +872,17 @@
             rig.name = 'rig';
             rig.visible = args.lightstage.rig.show;
             scene.add( rig );
+
+            // carry over current light state to avoid a flash on rebuild
+            if (reset && prevLightboards) {
+                copyLightboardState(prevLightboards, lightboards);
+            }
+
+            // swap old rig/lightboards after new ones are ready (reduces flashing)
+            if (reset) {
+                if (prevLightboards) scene.remove(prevLightboards);
+                if (prevRig) scene.remove(prevRig);
+            }
 
             if (reset && typeof setupIlluminationPreview === 'function') {
                 setupIlluminationPreview();
@@ -2191,6 +2227,17 @@
                 }
             }
             sync(args, args_init);
+
+            // reset HDRI/OLAT sequencing state so "all" starts from HDRI
+            allPhase = 'hdri';
+            allHdriSteps = 0;
+            hdriDirty = true;
+            hdriLastUpdate = 0;
+            if (args.lightstage && args.lightstage.patterns) {
+                args.lightstage.patterns.idx = 0;
+                args.lightstage.patterns.last_update = new Date().getTime();
+                args.lightstage.patterns.olatPausedApplied = false;
+            }
     
             // reset all args recursively but not the active property
             setupLightStage(true);
