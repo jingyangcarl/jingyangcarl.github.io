@@ -286,6 +286,57 @@
             illuminationCaption.style.display = 'none';
             document.body.appendChild(illuminationCaption);
 
+            layoutPreviewCaption = document.createElement('div');
+            layoutPreviewCaption.id = 'layoutPreviewCaption';
+            layoutPreviewCaption.textContent = 'Light stage layout';
+            layoutPreviewCaption.style.position = 'absolute';
+            layoutPreviewCaption.style.color = '#ffffff';
+            layoutPreviewCaption.style.fontSize = '11px';
+            layoutPreviewCaption.style.lineHeight = '14px';
+            layoutPreviewCaption.style.pointerEvents = 'none';
+            layoutPreviewCaption.style.zIndex = '998';
+            layoutPreviewCaption.style.whiteSpace = 'nowrap';
+            layoutPreviewCaption.style.transform = 'translate(-100%, -100%)';
+            layoutPreviewCaption.style.display = 'none';
+            document.body.appendChild(layoutPreviewCaption);
+
+            layoutPreviewStats = document.createElement('div');
+            layoutPreviewStats.id = 'layoutPreviewStats';
+            layoutPreviewStats.textContent = 'Boards: 0';
+            layoutPreviewStats.style.position = 'absolute';
+            layoutPreviewStats.style.color = '#ffffff';
+            layoutPreviewStats.style.fontSize = '11px';
+            layoutPreviewStats.style.lineHeight = '14px';
+            layoutPreviewStats.style.pointerEvents = 'none';
+            layoutPreviewStats.style.zIndex = '998';
+            layoutPreviewStats.style.whiteSpace = 'pre';
+            layoutPreviewStats.style.transform = 'translate(-100%, -50%)';
+            layoutPreviewStats.style.display = 'none';
+            document.body.appendChild(layoutPreviewStats);
+
+            // light stage layout preview (wireframe)
+            layoutPreviewRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            layoutPreviewRenderer.setClearColor(0x000000, 0);
+            layoutPreviewRenderer.setPixelRatio(window.devicePixelRatio || 1);
+            layoutPreviewRenderer.setSize(64, 64);
+            layoutPreviewCanvas = layoutPreviewRenderer.domElement;
+            layoutPreviewCanvas.id = 'layoutPreview';
+            layoutPreviewCanvas.style.position = 'absolute';
+            layoutPreviewCanvas.style.left = '0';
+            layoutPreviewCanvas.style.top = '0';
+            layoutPreviewCanvas.style.pointerEvents = 'none';
+            layoutPreviewCanvas.style.display = 'none';
+            layoutPreviewCanvas.style.borderRadius = '50%';
+            layoutPreviewCanvas.style.border = '1px solid rgba(255, 255, 255, 0.35)';
+            layoutPreviewCanvas.style.background = 'rgba(0, 0, 0, 0.35)';
+            layoutPreviewCanvas.style.zIndex = '996';
+            document.body.appendChild(layoutPreviewCanvas);
+
+            layoutPreviewScene = new THREE.Scene();
+            layoutPreviewCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
+            layoutPreviewCamera.position.copy(camera.position);
+            layoutPreviewCamera.lookAt(0, 0, 0);
+
             axesHelper = new THREE.AxesHelper(0.6);
             axesHelper.visible = false;
             scene.add(axesHelper);
@@ -319,7 +370,12 @@
 
             let gui_ls = gui.addFolder('Light Stage Setting');
             gui_ls.open();
-            gui_ls.add( args.lightstage, 'ledDensity', 1, 10, 1 ).name('Light Density').onChange(v => setupLightStage(true)).listen();
+            gui_ls.add( args.lightstage, 'shape', {
+                Icosahedron: 'icosahedron',
+                'UV Sphere': 'uvsphere',
+                Cube: 'cube'
+            } ).name('Light Stage Shape').onChange(v => setupLightStage(true)).listen();
+            gui_ls.add( args.lightstage, 'ledDensity', 1, 6, 1 ).name('Light Density').onChange(v => setupLightStage(true)).listen();
             gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => setupLightStage(true)).listen();
 
             let gui_ls_lightboard = gui_ls.addFolder('Light Board');
@@ -502,7 +558,7 @@
                 updateCameraInsetLabel();
                 updateLabelMask();
             }).listen();
-            gui_side.add( args.render.sideRender, 'miniScalar', 2, 8, 1 ).name('Illumination Inset Scalar').listen();
+            gui_side.add( args.render.sideRender, 'miniScalar', 8, 12, 1 ).name('Illumination Inset Scalar').listen();
             // Camera settings grouped under Side Renderer -> Camera
             let gui_camera = gui_render.addFolder('Scene Camera');
             gui_camera.open();
@@ -802,8 +858,8 @@
                 }
             };
 
-            function getVertices(mesh) {
-                const position = geometry.attributes.position;
+            function getVertices(geom) {
+                const position = geom.attributes.position;
                 const vertices = [];
                 const uniquePositions = new Set();
                 
@@ -820,8 +876,62 @@
             }
 
             // Generate light board positions
-            let geometry = new THREE.IcosahedronGeometry(args.lightstage.radius, args.lightstage.ledDensity-1);
-            const positions = getVertices(geometry);
+            let geometry;
+            let positions = [];
+            const stageShape = (args.lightstage && args.lightstage.shape) ? args.lightstage.shape : 'icosahedron';
+            if (stageShape === 'uvsphere') {
+                const bands = Math.max(3, Math.round(args.lightstage.ledDensity * 2));
+                const slices = Math.max(6, Math.round(args.lightstage.ledDensity * 4));
+                const radius = args.lightstage.radius || 1;
+                for (let i = 0; i < bands; i++) {
+                    const v = (bands === 1) ? 0.5 : (i / (bands - 1));
+                    const theta = v * Math.PI; // 0..pi (non-uniform solid angle)
+                    const sinTheta = Math.sin(theta);
+                    const cosTheta = Math.cos(theta);
+                    for (let j = 0; j < slices; j++) {
+                        const u = j / slices; // 0..1
+                        const phi = u * Math.PI * 2;
+                        positions.push(new THREE.Vector3(
+                            radius * sinTheta * Math.cos(phi),
+                            radius * cosTheta,
+                            radius * sinTheta * Math.sin(phi)
+                        ));
+                    }
+                }
+                geometry = new THREE.SphereGeometry(radius, slices, bands);
+            } else if (stageShape === 'cube') {
+                const half = args.lightstage.radius || 1;
+                const divisions = Math.max(2, Math.round(args.lightstage.ledDensity * 2));
+                const step = (2 * half) / divisions;
+                const unique = new Set();
+                const pushUnique = (x, y, z) => {
+                    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
+                    if (unique.has(key)) return;
+                    unique.add(key);
+                    positions.push(new THREE.Vector3(x, y, z));
+                };
+
+                for (let i = 0; i <= divisions; i++) {
+                    const a = -half + i * step;
+                    for (let j = 0; j <= divisions; j++) {
+                        const b = -half + j * step;
+                        // +X / -X faces
+                        pushUnique(half, a, b);
+                        pushUnique(-half, a, b);
+                        // +Y / -Y faces
+                        pushUnique(a, half, b);
+                        pushUnique(a, -half, b);
+                        // +Z / -Z faces
+                        pushUnique(a, b, half);
+                        pushUnique(a, b, -half);
+                    }
+                }
+
+                geometry = new THREE.BoxGeometry(2 * half, 2 * half, 2 * half, divisions, divisions, divisions);
+            } else {
+                geometry = new THREE.IcosahedronGeometry(args.lightstage.radius, args.lightstage.ledDensity - 1);
+                positions = getVertices(geometry);
+            }
 
             // Convert to spherical coordinates and sort in a spiral order (theta bands with alternating phi direction)
             const spiralSort = (pts) => {
@@ -849,6 +959,13 @@
             };
 
             spiralSort(positions);
+
+            // downsample very dense configurations to keep rendering responsive
+            const maxBoards = 1200;
+            if (positions.length > maxBoards) {
+                const step = Math.ceil(positions.length / maxBoards);
+                positions = positions.filter((_, i) => (i % step) === 0);
+            }
             
 
             // Add light boards to the scene
@@ -866,12 +983,17 @@
             scene.add(lightboards);
 
             // light stage rig
-            var geo = new THREE.EdgesGeometry( geometry ); // or rigGeometry( geometry )
+            var geo = (stageShape === 'cube')
+                ? new THREE.WireframeGeometry( geometry )
+                : new THREE.EdgesGeometry( geometry ); // or rigGeometry( geometry )
             var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 2, transparent: true, opacity: args.lightstage.rig.opacity} );
             rig = new THREE.LineSegments( geo, mat );
             rig.name = 'rig';
             rig.visible = args.lightstage.rig.show;
             scene.add( rig );
+
+            // update layout preview wireframe
+            updateLayoutPreviewRig(geometry, stageShape);
 
             // carry over current light state to avoid a flash on rebuild
             if (reset && prevLightboards) {
@@ -890,6 +1012,22 @@
 
             hdriDirty = true;
 
+        }
+
+        function updateLayoutPreviewRig(geometry, stageShape) {
+            if (!layoutPreviewScene || !geometry) return;
+            if (layoutPreviewRig) {
+                layoutPreviewScene.remove(layoutPreviewRig);
+                if (layoutPreviewRig.geometry) layoutPreviewRig.geometry.dispose();
+                if (layoutPreviewRig.material) layoutPreviewRig.material.dispose();
+                layoutPreviewRig = null;
+            }
+            const previewGeo = (stageShape === 'cube')
+                ? new THREE.WireframeGeometry(geometry)
+                : new THREE.EdgesGeometry(geometry);
+            const previewMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+            layoutPreviewRig = new THREE.LineSegments(previewGeo, previewMat);
+            layoutPreviewScene.add(layoutPreviewRig);
         }
 
         function disposeCurrentMesh() {
@@ -2127,7 +2265,7 @@
                     illuminationCameraChrome.lookAt(_illuminationPos);
                 }
                 // 2:1 rectangle to fit two spheres side-by-side
-                const baseMiniHeight = Math.max(60, Math.floor(insetHeight / (args.render.sideRender.miniScalar || 4)));
+                const baseMiniHeight = Math.max(60, Math.floor(window.innerHeight / (args.render.sideRender.miniScalar || 4)));
                 const baseMiniWidth = Math.max(120, Math.floor(baseMiniHeight * 2));
                 const stackGap = 8;
                 const stackY = 20;
@@ -2179,6 +2317,63 @@
                     illuminationCaption.style.display = 'block';
                 }
 
+                // layout preview (wireframe) next to equirect preview on the left
+                if (layoutPreviewCanvas && layoutPreviewRenderer && layoutPreviewScene && layoutPreviewCamera) {
+                    if (showEquirectPreview) {
+                        const layoutSize = Math.max(60, Math.floor(clampedHeight * 0.75));
+                        const layoutGap = 8;
+                        const layoutX = Math.max(20, equirectX - layoutSize - layoutGap);
+                        const layoutY = equirectY + Math.max(0, Math.floor((clampedHeight - layoutSize) / 2));
+                        const layoutTop = Math.max(0, window.innerHeight - (layoutY + layoutSize));
+
+                        layoutPreviewCanvas.style.display = 'block';
+                        layoutPreviewCanvas.style.left = `${layoutX}px`;
+                        layoutPreviewCanvas.style.top = `${layoutTop}px`;
+                        layoutPreviewCanvas.style.width = `${layoutSize}px`;
+                        layoutPreviewCanvas.style.height = `${layoutSize}px`;
+                        layoutPreviewRenderer.setSize(layoutSize, layoutSize, false);
+
+                        if (layoutPreviewCaption) {
+                            const captionOffset = 6;
+                            layoutPreviewCaption.style.left = `${layoutX + layoutSize - captionPad}px`;
+                            layoutPreviewCaption.style.top = `${layoutTop + layoutSize + captionOffset}px`;
+                            layoutPreviewCaption.style.right = 'auto';
+                            layoutPreviewCaption.style.bottom = 'auto';
+                            layoutPreviewCaption.style.transform = 'translate(-100%, 0)';
+                            layoutPreviewCaption.style.display = 'block';
+                        }
+
+                        if (layoutPreviewStats) {
+                            const boardCount = lightboards && lightboards.children ? lightboards.children.length : 0;
+                            const density = (args && args.lightstage && typeof args.lightstage.ledDensity !== 'undefined') ? args.lightstage.ledDensity : '-';
+                            const radiusVal = (args && args.lightstage && typeof args.lightstage.radius !== 'undefined') ? args.lightstage.radius : '-';
+                            const shapeVal = (args && args.lightstage && typeof args.lightstage.shape !== 'undefined') ? args.lightstage.shape : '-';
+                            const patternVal = (args && args.lightstage && args.lightstage.patterns && typeof args.lightstage.patterns.active !== 'undefined') ? args.lightstage.patterns.active : '-';
+                            layoutPreviewStats.textContent = `Boards: ${boardCount}\nDensity: ${density}\nRadius: ${radiusVal}\nShape: ${shapeVal}\nPattern: ${patternVal}`;
+                            layoutPreviewStats.style.left = `${layoutX - captionPad}px`;
+                            layoutPreviewStats.style.top = `${layoutTop + layoutSize / 2}px`;
+                            layoutPreviewStats.style.right = 'auto';
+                            layoutPreviewStats.style.bottom = 'auto';
+                            layoutPreviewStats.style.transform = 'translate(-100%, -50%)';
+                            layoutPreviewStats.style.display = 'block';
+                        }
+
+                        // align with perspective camera rotation
+                        layoutPreviewCamera.fov = camera.fov;
+                        layoutPreviewCamera.aspect = 1;
+                        layoutPreviewCamera.position.copy(camera.position);
+                        layoutPreviewCamera.quaternion.copy(camera.quaternion);
+                        layoutPreviewCamera.updateProjectionMatrix();
+
+                        if (layoutPreviewRig) layoutPreviewRig.visible = true;
+                        layoutPreviewRenderer.render(layoutPreviewScene, layoutPreviewCamera);
+                    } else {
+                        layoutPreviewCanvas.style.display = 'none';
+                        if (layoutPreviewCaption) layoutPreviewCaption.style.display = 'none';
+                        if (layoutPreviewStats) layoutPreviewStats.style.display = 'none';
+                    }
+                }
+
                 renderer.setScissorTest(true);
                 renderer.setClearColor(0x000000, 0);
                 // clear only the mini preview rect (not the full inset)
@@ -2212,6 +2407,9 @@
                 if (greyBallCaption) greyBallCaption.style.display = 'none';
                 if (chromeBallCaption) chromeBallCaption.style.display = 'none';
                 if (illuminationCaption) illuminationCaption.style.display = 'none';
+                if (layoutPreviewCanvas) layoutPreviewCanvas.style.display = 'none';
+                if (layoutPreviewCaption) layoutPreviewCaption.style.display = 'none';
+                if (layoutPreviewStats) layoutPreviewStats.style.display = 'none';
             }
         }
 
@@ -2452,7 +2650,7 @@
         let scene, camera, cameraObject, renderer, labelRenderer, gui, stats;
         let cameraInsetLabel;
         let loadingLabel;
-        let equirectCaption, greyBallCaption, chromeBallCaption, illuminationCaption;
+        let equirectCaption, greyBallCaption, chromeBallCaption, illuminationCaption, layoutPreviewCaption, layoutPreviewStats;
         let hdriPreviewCanvas, hdriPreviewCtx, hdriPreviewOffscreen, hdriPreviewOffCtx;
         let labelMaskSvg, labelMaskFullRect, labelMaskInsetRect;
         let rig, lightboards;
@@ -2463,6 +2661,7 @@
         let illuminationCameraGrey, illuminationCameraChrome;
         let illuminationLightsGrey = [], illuminationLightsChrome = [];
         let chromeBall, greyBall;
+        let layoutPreviewRenderer, layoutPreviewScene, layoutPreviewCamera, layoutPreviewCanvas, layoutPreviewRig;
         // multiple inset cameras and helpers
         let cameraHelper;
         let cameraViews = [];
@@ -2506,6 +2705,7 @@
         const args_init = {
             render_mode: render_mode,
             lightstage: {
+                shape: 'icosahedron',
                 radius: 1.5,
                 ledDensity: 5,
                 object: {
@@ -2610,7 +2810,7 @@
                     show: true,
                     showIllumination: true,
                     insetScalar: 3,
-                    miniScalar: 4,
+                    miniScalar: 10,
                     illuminationView: 'overall',
                 },
                 camera: {
