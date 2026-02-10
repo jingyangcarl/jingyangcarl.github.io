@@ -216,6 +216,100 @@
             loadingLabel.style.pointerEvents = 'none';
             loadingLabel.style.display = 'none';
             document.body.appendChild(loadingLabel);
+
+            hdriPreviewCanvas = document.createElement('canvas');
+            hdriPreviewCanvas.id = 'hdriPreview';
+            hdriPreviewCanvas.style.position = 'absolute';
+            hdriPreviewCanvas.style.left = '0';
+            hdriPreviewCanvas.style.top = '0';
+            hdriPreviewCanvas.style.pointerEvents = 'none';
+            hdriPreviewCanvas.style.display = 'none';
+            hdriPreviewCanvas.style.zIndex = '997';
+            hdriPreviewCtx = hdriPreviewCanvas.getContext('2d');
+            hdriPreviewOffscreen = document.createElement('canvas');
+            hdriPreviewOffCtx = hdriPreviewOffscreen.getContext('2d');
+            document.body.appendChild(hdriPreviewCanvas);
+
+            equirectCaption = document.createElement('div');
+            equirectCaption.id = 'equirectCaption';
+            equirectCaption.textContent = 'Equirectangular map';
+            equirectCaption.style.position = 'absolute';
+            equirectCaption.style.color = '#ffffff';
+            equirectCaption.style.fontSize = '11px';
+            equirectCaption.style.lineHeight = '14px';
+            equirectCaption.style.pointerEvents = 'none';
+            equirectCaption.style.zIndex = '998';
+            equirectCaption.style.whiteSpace = 'nowrap';
+            equirectCaption.style.transform = 'translate(-100%, -100%)';
+            equirectCaption.style.display = 'none';
+            document.body.appendChild(equirectCaption);
+
+            greyBallCaption = document.createElement('div');
+            greyBallCaption.id = 'greyBallCaption';
+            greyBallCaption.textContent = 'Gray ball';
+            greyBallCaption.style.position = 'absolute';
+            greyBallCaption.style.color = '#ffffff';
+            greyBallCaption.style.fontSize = '11px';
+            greyBallCaption.style.lineHeight = '14px';
+            greyBallCaption.style.pointerEvents = 'none';
+            greyBallCaption.style.zIndex = '998';
+            greyBallCaption.style.whiteSpace = 'nowrap';
+            greyBallCaption.style.transform = 'translate(-100%, -100%)';
+            greyBallCaption.style.display = 'none';
+            document.body.appendChild(greyBallCaption);
+
+            chromeBallCaption = document.createElement('div');
+            chromeBallCaption.id = 'chromeBallCaption';
+            chromeBallCaption.textContent = 'Chrome ball';
+            chromeBallCaption.style.position = 'absolute';
+            chromeBallCaption.style.color = '#ffffff';
+            chromeBallCaption.style.fontSize = '11px';
+            chromeBallCaption.style.lineHeight = '14px';
+            chromeBallCaption.style.pointerEvents = 'none';
+            chromeBallCaption.style.zIndex = '998';
+            chromeBallCaption.style.whiteSpace = 'nowrap';
+            chromeBallCaption.style.transform = 'translate(-100%, -100%)';
+            chromeBallCaption.style.display = 'none';
+            document.body.appendChild(chromeBallCaption);
+
+            illuminationCaption = document.createElement('div');
+            illuminationCaption.id = 'illuminationCaption';
+            illuminationCaption.textContent = 'Illumination preview — Selected Camera';
+            illuminationCaption.style.position = 'absolute';
+            illuminationCaption.style.color = '#ffffff';
+            illuminationCaption.style.fontSize = '11px';
+            illuminationCaption.style.lineHeight = '14px';
+            illuminationCaption.style.pointerEvents = 'none';
+            illuminationCaption.style.zIndex = '998';
+            illuminationCaption.style.whiteSpace = 'nowrap';
+            illuminationCaption.style.transform = 'translate(-100%, -100%)';
+            illuminationCaption.style.display = 'none';
+            document.body.appendChild(illuminationCaption);
+
+            axesHelper = new THREE.AxesHelper(0.6);
+            axesHelper.visible = false;
+            scene.add(axesHelper);
+
+            axesLabelGroup = new THREE.Group();
+            axesLabelGroup.visible = false;
+            const axisLabel = (text, color) => {
+                const div = document.createElement('div');
+                div.textContent = text;
+                div.style.color = color;
+                div.style.fontSize = '12px';
+                div.style.fontFamily = 'Monospace';
+                div.style.textShadow = '0 0 4px rgba(0,0,0,0.6)';
+                return new CSS2DObject(div);
+            };
+            const xLabel = axisLabel('X', '#ff5555');
+            const yLabel = axisLabel('Y', '#55ff55');
+            const zLabel = axisLabel('Z', '#5599ff');
+            const axisSize = 0.6;
+            xLabel.position.set(axisSize, 0, 0);
+            yLabel.position.set(0, axisSize, 0);
+            zLabel.position.set(0, 0, axisSize);
+            axesLabelGroup.add(xLabel, yLabel, zLabel);
+            axesHelper.add(axesLabelGroup);
         }
 
         function setupGUI() {
@@ -309,6 +403,9 @@
 
             let gui_render = gui.addFolder('Render');
             // gui_render.open();
+            gui_render.add(args.render, 'showAxis').name('Show Axis').onChange(v => {
+                if (axesHelper) axesHelper.visible = v;
+            }).listen();
 
             let gui_ls_object = gui_render.addFolder('Object');
             gui_ls_object.open();
@@ -1259,6 +1356,7 @@
                 else if (pattern === 'desert') hdriCache = generateDesertHDRI(width, height);
                 else hdriCache = generateGradientHDRI(width, height);
                 hdriCache.pattern = pattern;
+                hdriPreviewDirty = true;
             }
 
             const lightDirs = lightboards.children.map(lb => lb.position.clone().normalize());
@@ -1274,8 +1372,8 @@
                     const u = (x + 0.5) / width;
                     const phi = u * Math.PI * 2;
                     const dirX = sinTheta * Math.cos(phi);
-                    const dirY = sinTheta * Math.sin(phi);
-                    const dirZ = cosTheta;
+                    const dirY = cosTheta;
+                    const dirZ = sinTheta * Math.sin(phi);
 
                     let bestIdx = 0;
                     let bestDot = -1e9;
@@ -1334,6 +1432,8 @@
                 }
                 leds.needsUpdate = true;
             });
+            hdriPreviewDirty = true;
+            updateHdriPreviewCanvas();
         }
 
         function createPrimitiveMesh(type) {
@@ -1677,6 +1777,9 @@
                         args.lightstage.patterns.olatPausedApplied = true;
                     }
                 }
+                if (hdriPreviewCanvas) {
+                    updateOlatPreviewCanvas();
+                }
             } else if (args.lightstage.patterns.active === 'hdri') {
                 const hdriAutoplay = args.lightstage.patterns.autoplay === true;
                 if (hdriAutoplay) {
@@ -1807,6 +1910,9 @@
                             args.lightstage.patterns.olatPausedApplied = true;
                         }
                     }
+                    if (hdriPreviewCanvas) {
+                        updateOlatPreviewCanvas();
+                    }
                 }
             } else if (args.lightstage.patterns.active == 'warmup') {
                 _olatColor.set(args.lightstage.patterns.olatColor || 0xffffff);
@@ -1906,6 +2012,12 @@
             if (helper) {
                 helper.visible = args.render.rayCaster.displayHelper;
             }
+            if (axesHelper) {
+                axesHelper.visible = args.render.showAxis;
+            }
+            if (axesLabelGroup) {
+                axesLabelGroup.visible = args.render.showAxis;
+            }
 
             // update multiple camera helpers and markers visibility/update
             if (cameraHelpersArr && cameraHelpersArr.length > 0) {
@@ -1967,14 +2079,57 @@
                     illuminationCameraChrome.lookAt(_illuminationPos);
                 }
                 // 2:1 rectangle to fit two spheres side-by-side
-                const miniHeight = Math.max(60, Math.floor(insetHeight / (args.render.sideRender.miniScalar || 4)));
-                const miniWidth = Math.max(120, Math.floor(miniHeight * 2));
-                const clampedWidth = Math.min(miniWidth, insetWidth);
-                const clampedHeight = Math.min(miniHeight, insetHeight);
-                const miniX = 20;
-                const miniY = 20;
+                const baseMiniHeight = Math.max(60, Math.floor(insetHeight / (args.render.sideRender.miniScalar || 4)));
+                const baseMiniWidth = Math.max(120, Math.floor(baseMiniHeight * 2));
+                const stackGap = 8;
+                const stackY = 20;
+                const availableWidth = Math.max(0, window.innerWidth - 40);
+                const availableHeight = Math.max(0, window.innerHeight - 40);
+
+                const totalBaseHeight = baseMiniHeight * 2 + stackGap;
+                const scale = totalBaseHeight > 0 ? Math.min(1, availableHeight / totalBaseHeight) : 1;
+                const miniHeight = Math.max(1, Math.floor(baseMiniHeight * scale));
+                const miniWidth = Math.max(1, Math.floor(baseMiniWidth * scale));
+                const clampedWidth = Math.max(1, Math.min(miniWidth, availableWidth));
+                const clampedHeight = Math.max(1, Math.min(miniHeight, availableHeight));
+
+                const stackX = Math.max(20, window.innerWidth - 20 - clampedWidth);
+                const equirectX = stackX;
+                const equirectY = stackY;
+                const miniX = stackX;
+                const miniY = equirectY + clampedHeight + stackGap;
+
                 const halfWidth = Math.max(1, Math.floor(clampedWidth / 2));
                 const rightWidth = Math.max(1, clampedWidth - halfWidth);
+
+                const showEquirectPreview = args.lightstage.patterns.active === 'hdri' || args.lightstage.patterns.active === 'all' || args.lightstage.patterns.active === 'olat';
+                const equirectTop = Math.max(0, window.innerHeight - (equirectY + clampedHeight));
+                const miniTop = Math.max(0, window.innerHeight - (miniY + clampedHeight));
+                const captionPad = 4;
+                const cameraLabel = (args.render.sideRender.illuminationView === 'overall') ? 'Perspective Camera' : 'Selected Camera';
+                if (equirectCaption) {
+                    equirectCaption.style.left = `${equirectX + clampedWidth - captionPad}px`;
+                    equirectCaption.style.top = `${equirectTop + clampedHeight - captionPad}px`;
+                    equirectCaption.style.display = showEquirectPreview ? 'block' : 'none';
+                }
+                if (greyBallCaption) {
+                    greyBallCaption.textContent = 'Gray ball';
+                    greyBallCaption.style.left = `${miniX + halfWidth - captionPad}px`;
+                    greyBallCaption.style.top = `${miniTop + clampedHeight - captionPad}px`;
+                    greyBallCaption.style.display = 'block';
+                }
+                if (chromeBallCaption) {
+                    chromeBallCaption.textContent = 'Chrome ball';
+                    chromeBallCaption.style.left = `${miniX + clampedWidth - captionPad}px`;
+                    chromeBallCaption.style.top = `${miniTop + clampedHeight - captionPad}px`;
+                    chromeBallCaption.style.display = 'block';
+                }
+                if (illuminationCaption) {
+                    illuminationCaption.textContent = `Illumination preview — ${cameraLabel}`;
+                    illuminationCaption.style.left = `${miniX + clampedWidth - captionPad}px`;
+                    illuminationCaption.style.top = `${miniTop - captionPad}px`;
+                    illuminationCaption.style.display = 'block';
+                }
 
                 renderer.setScissorTest(true);
                 renderer.setClearColor(0x000000, 0);
@@ -1996,6 +2151,19 @@
                 renderer.render(illuminationSceneChrome, illuminationCameraChrome);
 
                 renderer.setScissorTest(false);
+
+                if (showEquirectPreview && hdriPreviewCanvas) {
+                    hdriPreviewCanvas.style.display = 'block';
+                    layoutHdriPreview(equirectX, equirectY, clampedWidth, clampedHeight);
+                } else if (hdriPreviewCanvas) {
+                    hdriPreviewCanvas.style.display = 'none';
+                }
+            } else if (hdriPreviewCanvas) {
+                hdriPreviewCanvas.style.display = 'none';
+                if (equirectCaption) equirectCaption.style.display = 'none';
+                if (greyBallCaption) greyBallCaption.style.display = 'none';
+                if (chromeBallCaption) chromeBallCaption.style.display = 'none';
+                if (illuminationCaption) illuminationCaption.style.display = 'none';
             }
         }
 
@@ -2074,6 +2242,127 @@
             loadingLabel.style.display = isVisible ? 'block' : 'none';
         }
 
+        function updateHdriPreviewCanvas() {
+            if (!hdriPreviewCanvas || !hdriPreviewCtx || !hdriPreviewOffscreen || !hdriPreviewOffCtx) return;
+            if (!hdriCache || !hdriCache.colors) return;
+            if (!hdriPreviewDirty) return;
+            const width = hdriCache.width;
+            const height = hdriCache.height;
+            if (width <= 0 || height <= 0) return;
+            hdriPreviewOffscreen.width = width;
+            hdriPreviewOffscreen.height = height;
+            const imgData = hdriPreviewOffCtx.createImageData(width, height);
+            const data = imgData.data;
+            const intensity = Math.max(0.0, args.lightstage.patterns.hdriIntensity || 1.0);
+            const contrast = Math.max(0.01, args.lightstage.patterns.hdriContrast || 1.0);
+            for (let i = 0; i < width * height; i++) {
+                const r = Math.min(1, Math.max(0, Math.pow(hdriCache.colors[i * 3] || 0, 1 / contrast))) * intensity;
+                const g = Math.min(1, Math.max(0, Math.pow(hdriCache.colors[i * 3 + 1] || 0, 1 / contrast))) * intensity;
+                const b = Math.min(1, Math.max(0, Math.pow(hdriCache.colors[i * 3 + 2] || 0, 1 / contrast))) * intensity;
+                const idx = i * 4;
+                data[idx] = Math.min(255, Math.floor(r * 255));
+                data[idx + 1] = Math.min(255, Math.floor(g * 255));
+                data[idx + 2] = Math.min(255, Math.floor(b * 255));
+                data[idx + 3] = 255;
+            }
+            hdriPreviewOffCtx.putImageData(imgData, 0, 0);
+            hdriPreviewDirty = false;
+        }
+
+        function updateOlatPreviewCanvas() {
+            if (!hdriPreviewCanvas || !hdriPreviewCtx || !hdriPreviewOffscreen || !hdriPreviewOffCtx) return;
+            if (!lightboards || lightboards.children.length === 0) return;
+            const width = args.lightstage.patterns.hdriResolution || 128;
+            const height = Math.floor(width / 2);
+            if (width <= 0 || height <= 0) return;
+            hdriPreviewOffscreen.width = width;
+            hdriPreviewOffscreen.height = height;
+
+            const imgData = hdriPreviewOffCtx.createImageData(width, height);
+            const data = imgData.data;
+            const off = 0.0;
+
+            const n_all_white = args.lightstage.patterns.fps;
+            const n_all_off = args.lightstage.patterns.fps / 2;
+            const total = lightboards.children.length + (n_all_white + n_all_off);
+            const idx = ((args.lightstage.patterns.idx % total) + total) % total;
+
+            let mode = 'olat';
+            if (idx < n_all_white) mode = 'white';
+            else if (idx < (n_all_white + n_all_off)) mode = 'off';
+
+            const olatIntensity = (typeof args.lightstage.patterns.olatIntensity === 'number') ? args.lightstage.patterns.olatIntensity : 1.0;
+            _olatColor.set(args.lightstage.patterns.olatColor || 0xffffff);
+
+            let olatBoardIndex = -1;
+            if (mode === 'olat') {
+                olatBoardIndex = idx - (n_all_white + n_all_off);
+            }
+
+            const lightDirs = lightboards.children.map(lb => lb.position.clone().normalize());
+
+            for (let y = 0; y < height; y++) {
+                const v = (y + 0.5) / height;
+                const theta = v * Math.PI;
+                const sinTheta = Math.sin(theta);
+                const cosTheta = Math.cos(theta);
+                for (let x = 0; x < width; x++) {
+                    const u = (x + 0.5) / width;
+                    const phi = u * Math.PI * 2;
+                    const dirX = sinTheta * Math.cos(phi);
+                    const dirY = cosTheta;
+                    const dirZ = sinTheta * Math.sin(phi);
+
+                    let bestIdx = 0;
+                    let bestDot = -1e9;
+                    for (let i = 0; i < lightDirs.length; i++) {
+                        const d = lightDirs[i];
+                        const dot = d.x * dirX + d.y * dirY + d.z * dirZ;
+                        if (dot > bestDot) {
+                            bestDot = dot;
+                            bestIdx = i;
+                        }
+                    }
+
+                    let r = off, g = off, b = off;
+                    if (mode === 'white') {
+                        r = g = b = 1.0 * olatIntensity;
+                    } else if (mode === 'olat' && bestIdx === olatBoardIndex) {
+                        r = _olatColor.r * olatIntensity;
+                        g = _olatColor.g * olatIntensity;
+                        b = _olatColor.b * olatIntensity;
+                    }
+
+                    const i4 = (y * width + x) * 4;
+                    data[i4] = Math.min(255, Math.floor(Math.min(1, r) * 255));
+                    data[i4 + 1] = Math.min(255, Math.floor(Math.min(1, g) * 255));
+                    data[i4 + 2] = Math.min(255, Math.floor(Math.min(1, b) * 255));
+                    data[i4 + 3] = 255;
+                }
+            }
+
+            hdriPreviewOffCtx.putImageData(imgData, 0, 0);
+            hdriPreviewDirty = false;
+        }
+
+        function layoutHdriPreview(miniX, miniY, miniWidth, miniHeight) {
+            if (!hdriPreviewCanvas || !hdriPreviewCtx) return;
+            const width = Math.max(10, Math.floor(miniWidth));
+            const height = Math.max(10, Math.floor(miniHeight));
+            hdriPreviewCanvas.width = width;
+            hdriPreviewCanvas.height = height;
+            const cssTop = Math.max(0, window.innerHeight - (miniY + height));
+            hdriPreviewCanvas.style.left = `${miniX}px`;
+            hdriPreviewCanvas.style.top = `${cssTop}px`;
+            if (hdriPreviewOffscreen && hdriPreviewOffCtx) {
+                hdriPreviewCtx.clearRect(0, 0, width, height);
+                hdriPreviewCtx.save();
+                hdriPreviewCtx.scale(-1, 1);
+                hdriPreviewCtx.drawImage(hdriPreviewOffscreen, -width, 0, width, height);
+                hdriPreviewCtx.restore();
+            }
+        }
+
         function onWindowResize(){
             
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -2104,8 +2393,12 @@
         let scene, camera, cameraObject, renderer, labelRenderer, gui, stats;
         let cameraInsetLabel;
         let loadingLabel;
+        let equirectCaption, greyBallCaption, chromeBallCaption, illuminationCaption;
+        let hdriPreviewCanvas, hdriPreviewCtx, hdriPreviewOffscreen, hdriPreviewOffCtx;
         let labelMaskSvg, labelMaskFullRect, labelMaskInsetRect;
         let rig, lightboards;
+        let axesHelper;
+        let axesLabelGroup;
         let illuminationSceneGrey, illuminationSceneChrome;
         let illuminationCameraGrey, illuminationCameraChrome;
         let illuminationLightsGrey = [], illuminationLightsChrome = [];
@@ -2143,6 +2436,7 @@
         let hdriCache = null;
         let hdriDirty = true;
         let hdriBoardColors = null;
+        let hdriPreviewDirty = true;
         const hdriPatternSequence = ['gradient', 'horizon', 'sunrise', 'coolSky', 'overcast', 'sunset', 'night', 'purpleDusk', 'desert'];
         let hdriLastUpdate = 0;
         let allPhase = 'hdri';
@@ -2238,6 +2532,7 @@
                 fullscreen: function() {},
             },
             render: {
+                showAxis: false,
                 rayCaster: {
                     radiusScalar: 1, // the radius scalar * lightstage.radius is the radius rays
                     rays: {
@@ -2256,7 +2551,7 @@
                     showIllumination: true,
                     insetScalar: 3,
                     miniScalar: 4,
-                    illuminationView: 'selected',
+                    illuminationView: 'overall',
                 },
                 camera: {
                     showCamera: true,
