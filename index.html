@@ -227,21 +227,6 @@
             gui_ls.add( args.lightstage, 'ledDensity', 1, 10, 1 ).name('Light Density').onChange(v => setupLightStage(true)).listen();
             gui_ls.add( args.lightstage, 'radius', 1, 10, 0.1).name('Light Stage Radius').onChange(v => setupLightStage(true)).listen();
 
-            let gui_ls_object = gui_ls.addFolder('Object');
-            gui_ls_object.open();
-            gui_ls_object.add( args.lightstage.object, 'type', {
-                Bunny: 'bunny',
-                Sphere: 'sphere',
-                'Torus Knot': 'torusKnot',
-                Box: 'box'
-            }).name('Model').onChange(v => loadObject(v)).listen();
-            gui_ls_object.add( args.lightstage.object, 'scale', 0.1, 5, 0.1 ).name('Size Scalar').onChange(v => {
-                if (mesh) {
-                    const baseScale = (args.lightstage.object.type === 'bunny') ? 0.01 : 0.25;
-                    mesh.scale.setScalar(baseScale * v);
-                }
-            }).listen();
-
             let gui_ls_lightboard = gui_ls.addFolder('Light Board');
             // gui_ls_lightboard.open();
             gui_ls_lightboard.add( args.lightstage.lightboard, 'show').name('Show Light Board').onChange(v => lightboards.visible = v).listen();
@@ -266,22 +251,129 @@
 
             let gui_ls_patterns = gui_ls.addFolder('Patterns');
             gui_ls_patterns.open();
-            gui_ls_patterns.add(args.lightstage.patterns, 'active', ['olat', 'warmup', 'off']).name('Patterns').onChange(v => args.lightstage.patterns.idx=0).listen();
+            const patternsActiveCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'active', ['olat', 'warmup', 'hdri', 'all', 'off']).name('Patterns').onChange(v => {
+                args.lightstage.patterns.idx=0;
+                if (v === 'hdri' || v === 'all') {
+                    hdriDirty = true;
+                    hdriLastUpdate = 0;
+                } else {
+                    hdriLastUpdate = 0;
+                }
+                if (v === 'olat') {
+                    args.lightstage.patterns.olatPausedApplied = false;
+                }
+                if (v === 'all') {
+                    allPhase = 'hdri';
+                    allHdriSteps = 0;
+                    args.lightstage.patterns.idx = 0;
+                    hdriDirty = true;
+                }
+                togglePatternControls();
+            }).listen();
             gui_ls_patterns.add(args.lightstage.patterns, 'fps', 1, 60, 1).name('FPS').listen();
             gui_ls_patterns.add(args.lightstage.patterns, 'idx').name('Pattern Index').listen().disable();
+            const patternsAutoplayCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'autoplay').name('Auto Play').onChange(() => {
+                args.lightstage.patterns.olatPausedApplied = false;
+                hdriLastUpdate = 0;
+            }).listen();
+            const olatColorCtrl = gui_ls_patterns.addColor(args.lightstage.patterns, 'olatColor').name('OLAT Color').listen();
+            const olatIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'olatIntensity', 1, 10, 0.1).name('OLAT Intensity').listen();
+            const hdriPatternCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriPattern', {
+                Gradient: 'gradient',
+                Horizon: 'horizon',
+                Sunrise: 'sunrise',
+                CoolSky: 'coolSky',
+                Overcast: 'overcast',
+                Sunset: 'sunset',
+                Night: 'night',
+                PurpleDusk: 'purpleDusk',
+                Desert: 'desert'
+            }).name('HDRI Pattern').onChange(() => { hdriDirty = true; }).listen();
+            const hdriIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriIntensity', 0, 5, 0.1).name('HDRI Intensity').onChange(() => { hdriDirty = true; }).listen();
+            const hdriContrastCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriContrast', 0.1, 3, 0.1).name('HDRI Contrast').onChange(() => { hdriDirty = true; }).listen();
 
-            let gui_controls = gui.addFolder('Controls');
-            // gui_controls.open();
-            gui_controls.add( args.controls, 'autoRotate').name('Camera Auto Rotation').onChange(v => controls.autoRotate = v).listen();
-            gui_controls.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Camera Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
-            gui_controls.add( args.controls, 'autoRotate_mesh').name('Mesh Auto Rotation').listen();
-            gui_controls.add( args.controls, 'autoRotate_mesh_speed', 0, 1, 0.1).name('Mesh Rotate Speed').listen();
+            function togglePatternControls() {
+                const isAll = args.lightstage.patterns.active === 'all';
+                const isHdri = args.lightstage.patterns.active === 'hdri';
+                const isOlat = args.lightstage.patterns.active === 'olat';
+                const showOlat = isOlat || args.lightstage.patterns.active === 'warmup';
+                const showHdri = isHdri;
+                olatColorCtrl.domElement.style.display = (!isAll && showOlat) ? '' : 'none';
+                olatIntensityCtrl.domElement.style.display = (!isAll && showOlat) ? '' : 'none';
+                patternsAutoplayCtrl.domElement.style.display = (isOlat || isHdri || isAll) ? '' : 'none';
+                hdriPatternCtrl.domElement.style.display = (!isAll && showHdri) ? '' : 'none';
+                hdriIntensityCtrl.domElement.style.display = (!isAll && showHdri) ? '' : 'none';
+                hdriContrastCtrl.domElement.style.display = (!isAll && showHdri) ? '' : 'none';
+            }
+            togglePatternControls();
 
             let gui_render = gui.addFolder('Render');
             // gui_render.open();
-            gui_render.add( args.render.rayCaster.rays, 'count', 0, args.render.rayCaster.rays.maxNum, 1).name('Ray Count').listen();
-            gui_render.add( args.render.rayCaster, 'displayHelper').name('Show BVH').listen();
-            gui_render.add( args.render.rayCaster, 'helperDepth', 1, 20, 1).name('BVH Depth').onChange(v => {
+
+            let gui_ls_object = gui_render.addFolder('Object');
+            gui_ls_object.open();
+            gui_ls_object.add( args.lightstage.object, 'type', {
+                Bunny: 'bunny',
+                Sphere: 'sphere',
+                'Torus Knot': 'torusKnot',
+                Box: 'box'
+            }).name('Model').onChange(v => loadObject(v)).listen();
+            gui_ls_object.add( args.lightstage.object, 'scale', 0.1, 5, 0.1 ).name('Size Scalar').onChange(v => {
+                if (mesh) {
+                    const baseScale = (args.lightstage.object.type === 'bunny') ? 0.01 : 0.25;
+                    mesh.scale.setScalar(baseScale * v);
+                }
+            }).listen();
+
+            let gui_ls_object_material = gui_ls_object.addFolder('Material');
+            gui_ls_object_material.open();
+            gui_ls_object_material.add( args.lightstage.object.material, 'preset', {
+                Matte: 'matte',
+                Metal: 'metal',
+                Rubber: 'rubber',
+                Glass: 'glass',
+                Plastic: 'plastic',
+                Jade: 'jade'
+            }).name('Preset').onChange(v => {
+                const preset = getMaterialPresetValues(v);
+                Object.assign(args.lightstage.object.material.brdf, preset);
+                applyObjectMaterial();
+            }).listen();
+
+            let gui_ls_object_brdf = gui_ls_object_material.addFolder('BRDF');
+            gui_ls_object_brdf.close();
+            gui_ls_object_brdf.addColor( args.lightstage.object.material.brdf, 'baseColor' ).name('Base Color').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'roughness', 0, 1, 0.01 ).name('Roughness').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'metalness', 0, 1, 0.01 ).name('Metalness').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'specularIntensity', 0, 1, 0.01 ).name('Specular Intensity').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.addColor( args.lightstage.object.material.brdf, 'specularColor' ).name('Specular Color').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'ior', 1, 2.5, 0.01 ).name('IOR').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'transmission', 0, 1, 0.01 ).name('Transmission').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'thickness', 0, 5, 0.01 ).name('Thickness').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.addColor( args.lightstage.object.material.brdf, 'attenuationColor' ).name('Attenuation Color').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'attenuationDistance', 0, 10, 0.01 ).name('Attenuation Dist').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'clearcoat', 0, 1, 0.01 ).name('Clearcoat').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'clearcoatRoughness', 0, 1, 0.01 ).name('Clearcoat Roughness').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'sheen', 0, 1, 0.01 ).name('Sheen').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.addColor( args.lightstage.object.material.brdf, 'sheenColor' ).name('Sheen Color').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'sheenRoughness', 0, 1, 0.01 ).name('Sheen Roughness').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'iridescence', 0, 1, 0.01 ).name('Iridescence').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'iridescenceIOR', 1, 2.5, 0.01 ).name('Iridescence IOR').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'iridescenceThicknessMin', 0, 1000, 1 ).name('Iridescence T Min').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'iridescenceThicknessMax', 0, 1000, 1 ).name('Iridescence T Max').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.addColor( args.lightstage.object.material.brdf, 'emissive' ).name('Emissive').onChange(() => applyObjectMaterial()).listen();
+            gui_ls_object_brdf.add( args.lightstage.object.material.brdf, 'emissiveIntensity', 0, 5, 0.01 ).name('Emissive Intensity').onChange(() => applyObjectMaterial()).listen();
+
+            let gui_ls_object_controls = gui_ls_object.addFolder('Controls');
+            // gui_ls_object_controls.open();
+            gui_ls_object_controls.add( args.controls, 'autoRotate_mesh').name('Mesh Auto Rotation').listen();
+            gui_ls_object_controls.add( args.controls, 'autoRotate_mesh_speed', 0, 1, 0.1).name('Mesh Rotate Speed').listen();
+
+            let gui_ls_object_bvh = gui_ls_object.addFolder('BVH');
+            // gui_ls_object_bvh.open();
+            gui_ls_object_bvh.add( args.render.rayCaster.rays, 'count', 0, args.render.rayCaster.rays.maxNum, 1).name('Ray Count').listen();
+            gui_ls_object_bvh.add( args.render.rayCaster, 'displayHelper').name('Show BVH').listen();
+            gui_ls_object_bvh.add( args.render.rayCaster, 'helperDepth', 1, 20, 1).name('BVH Depth').onChange(v => {
                 helper.depth = v;
                 if (helper.visible) helper.update();
             } ).listen();
@@ -308,7 +400,7 @@
             }).listen();
             gui_side.add( args.render.sideRender, 'miniScalar', 2, 8, 1 ).name('Illumination Inset Scalar').listen();
             // Camera settings grouped under Side Renderer -> Camera
-            let gui_camera = gui_render.addFolder('Camera');
+            let gui_camera = gui_render.addFolder('Scene Camera');
             gui_camera.open();
             gui_camera.add( args.render.camera, 'showCamera').name('Show Camera').onChange(v => {
                 if (cameraHelpersArr && cameraHelpersArr.length > 0) cameraHelpersArr.forEach(h => h.visible = v);
@@ -346,6 +438,11 @@
                     selectCamera(selectedCameraIndex);
                 }
             }).listen();
+
+            let gui_perspective_camera = gui_render.addFolder('Perspective Camera');
+            gui_perspective_camera.open();
+            gui_perspective_camera.add( args.controls, 'autoRotate').name('Camera Auto Rotation').onChange(v => controls.autoRotate = v).listen();
+            gui_perspective_camera.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Camera Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
 
             let gui_illumination = gui_render.addFolder('Illumination');
             gui_illumination.open();
@@ -651,6 +748,8 @@
                 setupIlluminationPreview();
             }
 
+            hdriDirty = true;
+
         }
 
         function disposeCurrentMesh() {
@@ -704,6 +803,537 @@
                 createCameraViews();
                 selectCamera(selectedCameraIndex);
             }
+
+            applyObjectMaterial();
+        }
+
+        function getMaterialPresetValues(preset) {
+            switch (preset) {
+                case 'glass':
+                    return {
+                        baseColor: 0xffffff,
+                        roughness: 0.02,
+                        metalness: 0.0,
+                        specularIntensity: 1.0,
+                        specularColor: 0xffffff,
+                        ior: 1.5,
+                        transmission: 1.0,
+                        thickness: 0.8,
+                        attenuationColor: 0xffffff,
+                        attenuationDistance: 2.0,
+                        clearcoat: 0.0,
+                        clearcoatRoughness: 0.0,
+                        sheen: 0.0,
+                        sheenColor: 0xffffff,
+                        sheenRoughness: 0.5,
+                        iridescence: 0.0,
+                        iridescenceIOR: 1.3,
+                        iridescenceThicknessMin: 100,
+                        iridescenceThicknessMax: 400,
+                        emissive: 0x000000,
+                        emissiveIntensity: 0.0,
+                    };
+                case 'plastic':
+                    return {
+                        baseColor: 0x1e3a8a,
+                        roughness: 0.15,
+                        metalness: 0.0,
+                        specularIntensity: 0.8,
+                        specularColor: 0xffffff,
+                        ior: 1.5,
+                        transmission: 0.0,
+                        thickness: 0.0,
+                        attenuationColor: 0xffffff,
+                        attenuationDistance: 0.0,
+                        clearcoat: 1.0,
+                        clearcoatRoughness: 0.02,
+                        sheen: 0.0,
+                        sheenColor: 0xffffff,
+                        sheenRoughness: 0.5,
+                        iridescence: 0.0,
+                        iridescenceIOR: 1.3,
+                        iridescenceThicknessMin: 100,
+                        iridescenceThicknessMax: 400,
+                        emissive: 0x000000,
+                        emissiveIntensity: 0.0,
+                    };
+                case 'rubber':
+                    return {
+                        baseColor: 0x222222,
+                        roughness: 0.9,
+                        metalness: 0.0,
+                        specularIntensity: 0.1,
+                        specularColor: 0xffffff,
+                        ior: 1.5,
+                        transmission: 0.0,
+                        thickness: 0.0,
+                        attenuationColor: 0xffffff,
+                        attenuationDistance: 0.0,
+                        clearcoat: 0.0,
+                        clearcoatRoughness: 0.0,
+                        sheen: 0.0,
+                        sheenColor: 0xffffff,
+                        sheenRoughness: 0.5,
+                        iridescence: 0.0,
+                        iridescenceIOR: 1.3,
+                        iridescenceThicknessMin: 100,
+                        iridescenceThicknessMax: 400,
+                        emissive: 0x000000,
+                        emissiveIntensity: 0.0,
+                    };
+                case 'jade':
+                    return {
+                        baseColor: 0x6bbf87,
+                        roughness: 0.6,
+                        metalness: 0.0,
+                        specularIntensity: 0.2,
+                        specularColor: 0xffffff,
+                        ior: 1.4,
+                        transmission: 0.35,
+                        thickness: 1.2,
+                        attenuationColor: 0x2f6b3a,
+                        attenuationDistance: 1.5,
+                        clearcoat: 0.0,
+                        clearcoatRoughness: 0.0,
+                        sheen: 0.0,
+                        sheenColor: 0xffffff,
+                        sheenRoughness: 0.5,
+                        iridescence: 0.0,
+                        iridescenceIOR: 1.3,
+                        iridescenceThicknessMin: 100,
+                        iridescenceThicknessMax: 400,
+                        emissive: 0x000000,
+                        emissiveIntensity: 0.0,
+                    };
+                case 'metal':
+                    return {
+                        baseColor: 0xffffff,
+                        roughness: 0.2,
+                        metalness: 1.0,
+                        specularIntensity: 1.0,
+                        specularColor: 0xffffff,
+                        ior: 1.5,
+                        transmission: 0.0,
+                        thickness: 0.0,
+                        attenuationColor: 0xffffff,
+                        attenuationDistance: 0.0,
+                        clearcoat: 0.0,
+                        clearcoatRoughness: 0.0,
+                        sheen: 0.0,
+                        sheenColor: 0xffffff,
+                        sheenRoughness: 0.5,
+                        iridescence: 0.0,
+                        iridescenceIOR: 1.3,
+                        iridescenceThicknessMin: 100,
+                        iridescenceThicknessMax: 400,
+                        emissive: 0x000000,
+                        emissiveIntensity: 0.0,
+                    };
+                case 'matte':
+                default:
+                    return {
+                        baseColor: 0xffffff,
+                        roughness: 0.9,
+                        metalness: 0.0,
+                        specularIntensity: 0.1,
+                        specularColor: 0xffffff,
+                        ior: 1.5,
+                        transmission: 0.0,
+                        thickness: 0.0,
+                        attenuationColor: 0xffffff,
+                        attenuationDistance: 0.0,
+                        clearcoat: 0.0,
+                        clearcoatRoughness: 0.0,
+                        sheen: 0.0,
+                        sheenColor: 0xffffff,
+                        sheenRoughness: 0.5,
+                        iridescence: 0.0,
+                        iridescenceIOR: 1.3,
+                        iridescenceThicknessMin: 100,
+                        iridescenceThicknessMax: 400,
+                        emissive: 0x000000,
+                        emissiveIntensity: 0.0,
+                    };
+            }
+        }
+
+        function applyObjectMaterial() {
+            if (!mesh || !args || !args.lightstage || !args.lightstage.object || !args.lightstage.object.material) return;
+            const brdf = args.lightstage.object.material.brdf;
+            const applyToMesh = (m) => {
+                let mat = m.material;
+                if (Array.isArray(mat)) {
+                    mat = mat.map(() => new THREE.MeshPhysicalMaterial({
+                        color: brdf.baseColor,
+                        roughness: brdf.roughness,
+                        metalness: brdf.metalness,
+                        specularIntensity: brdf.specularIntensity,
+                        specularColor: brdf.specularColor,
+                        ior: brdf.ior,
+                        transmission: brdf.transmission,
+                        thickness: brdf.thickness,
+                        attenuationColor: brdf.attenuationColor,
+                        attenuationDistance: brdf.attenuationDistance,
+                        clearcoat: brdf.clearcoat,
+                        clearcoatRoughness: brdf.clearcoatRoughness,
+                        sheen: brdf.sheen,
+                        sheenColor: brdf.sheenColor,
+                        sheenRoughness: brdf.sheenRoughness,
+                        iridescence: brdf.iridescence,
+                        iridescenceIOR: brdf.iridescenceIOR,
+                        iridescenceThicknessRange: [brdf.iridescenceThicknessMin, brdf.iridescenceThicknessMax],
+                        emissive: brdf.emissive,
+                        emissiveIntensity: brdf.emissiveIntensity,
+                    }));
+                    mat.forEach(matItem => { matItem.needsUpdate = true; });
+                    m.material = mat;
+                    return;
+                }
+                if (!(mat instanceof THREE.MeshPhysicalMaterial)) {
+                    mat = new THREE.MeshPhysicalMaterial();
+                } else {
+                    mat.color.set(brdf.baseColor);
+                    mat.roughness = brdf.roughness;
+                    mat.metalness = brdf.metalness;
+                    mat.specularIntensity = brdf.specularIntensity;
+                    mat.specularColor.set(brdf.specularColor);
+                    mat.ior = brdf.ior;
+                    mat.transmission = brdf.transmission;
+                    mat.thickness = brdf.thickness;
+                    mat.attenuationColor.set(brdf.attenuationColor);
+                    mat.attenuationDistance = brdf.attenuationDistance;
+                    mat.clearcoat = brdf.clearcoat;
+                    mat.clearcoatRoughness = brdf.clearcoatRoughness;
+                    mat.sheen = brdf.sheen;
+                    mat.sheenColor.set(brdf.sheenColor);
+                    mat.sheenRoughness = brdf.sheenRoughness;
+                    mat.iridescence = brdf.iridescence;
+                    mat.iridescenceIOR = brdf.iridescenceIOR;
+                    mat.iridescenceThicknessRange = [brdf.iridescenceThicknessMin, brdf.iridescenceThicknessMax];
+                    mat.emissive.set(brdf.emissive);
+                    mat.emissiveIntensity = brdf.emissiveIntensity;
+                }
+                mat.color.set(brdf.baseColor);
+                mat.roughness = brdf.roughness;
+                mat.metalness = brdf.metalness;
+                mat.specularIntensity = brdf.specularIntensity;
+                mat.specularColor.set(brdf.specularColor);
+                mat.ior = brdf.ior;
+                mat.transmission = brdf.transmission;
+                mat.thickness = brdf.thickness;
+                mat.attenuationColor.set(brdf.attenuationColor);
+                mat.attenuationDistance = brdf.attenuationDistance;
+                mat.clearcoat = brdf.clearcoat;
+                mat.clearcoatRoughness = brdf.clearcoatRoughness;
+                mat.sheen = brdf.sheen;
+                mat.sheenColor.set(brdf.sheenColor);
+                mat.sheenRoughness = brdf.sheenRoughness;
+                mat.iridescence = brdf.iridescence;
+                mat.iridescenceIOR = brdf.iridescenceIOR;
+                mat.iridescenceThicknessRange = [brdf.iridescenceThicknessMin, brdf.iridescenceThicknessMax];
+                mat.emissive.set(brdf.emissive);
+                mat.emissiveIntensity = brdf.emissiveIntensity;
+                m.material = mat;
+                mat.needsUpdate = true;
+            };
+
+            if (mesh.isMesh) {
+                applyToMesh(mesh);
+            }
+            mesh.traverse((child) => {
+                if (child.isMesh) applyToMesh(child);
+            });
+        }
+
+        function generateGradientHDRI(width, height) {
+            const colors = new Float32Array(width * height * 3);
+            for (let y = 0; y < height; y++) {
+                const v = y / (height - 1);
+                for (let x = 0; x < width; x++) {
+                    const u = x / (width - 1);
+                    const sky = { r: 0.25, g: 0.45, b: 0.9 };
+                    const ground = { r: 0.9, g: 0.6, b: 0.25 };
+                    const t = v;
+                    let r = sky.r * (1 - t) + ground.r * t;
+                    let g = sky.g * (1 - t) + ground.g * t;
+                    let b = sky.b * (1 - t) + ground.b * t;
+                    const hue = Math.sin(u * Math.PI * 2) * 0.08;
+                    r = Math.min(1, Math.max(0, r + hue));
+                    b = Math.min(1, Math.max(0, b - hue));
+                    const idx = (y * width + x) * 3;
+                    colors[idx] = r;
+                    colors[idx + 1] = g;
+                    colors[idx + 2] = b;
+                }
+            }
+            return { width, height, colors };
+        }
+
+        function generateHorizonHDRI(width, height) {
+            const colors = new Float32Array(width * height * 3);
+            for (let y = 0; y < height; y++) {
+                const v = y / (height - 1);
+                const sky = { r: 0.15, g: 0.25, b: 0.6 };
+                const ground = { r: 0.35, g: 0.25, b: 0.15 };
+                const horizon = Math.exp(-Math.pow((v - 0.55) * 10.0, 2));
+                for (let x = 0; x < width; x++) {
+                    const t = v;
+                    let r = sky.r * (1 - t) + ground.r * t;
+                    let g = sky.g * (1 - t) + ground.g * t;
+                    let b = sky.b * (1 - t) + ground.b * t;
+                    r = Math.min(1, r + horizon * 0.35);
+                    g = Math.min(1, g + horizon * 0.35);
+                    b = Math.min(1, b + horizon * 0.25);
+                    const idx = (y * width + x) * 3;
+                    colors[idx] = r;
+                    colors[idx + 1] = g;
+                    colors[idx + 2] = b;
+                }
+            }
+            return { width, height, colors };
+        }
+
+        function generateSunriseHDRI(width, height) {
+            const colors = new Float32Array(width * height * 3);
+            for (let y = 0; y < height; y++) {
+                const v = y / (height - 1);
+                for (let x = 0; x < width; x++) {
+                    const u = x / (width - 1);
+                    const sun = Math.exp(-Math.pow((u - 0.5) * 8.0, 2)) * Math.exp(-Math.pow((v - 0.55) * 10.0, 2));
+                    let r = 0.1 + 0.8 * sun + 0.6 * (1 - v);
+                    let g = 0.1 + 0.4 * sun + 0.3 * (1 - v);
+                    let b = 0.2 + 0.1 * sun + 0.4 * v;
+                    r = Math.min(1, r);
+                    g = Math.min(1, g);
+                    b = Math.min(1, b);
+                    const idx = (y * width + x) * 3;
+                    colors[idx] = r;
+                    colors[idx + 1] = g;
+                    colors[idx + 2] = b;
+                }
+            }
+            return { width, height, colors };
+        }
+
+        function generateCoolSkyHDRI(width, height) {
+            const colors = new Float32Array(width * height * 3);
+            for (let y = 0; y < height; y++) {
+                const v = y / (height - 1);
+                for (let x = 0; x < width; x++) {
+                    const u = x / (width - 1);
+                    const band = 0.5 + 0.5 * Math.sin(u * Math.PI * 4) * Math.exp(-Math.pow((v - 0.3) * 8.0, 2));
+                    let r = 0.15 + 0.2 * (1 - v) + 0.05 * band;
+                    let g = 0.2 + 0.3 * (1 - v) + 0.08 * band;
+                    let b = 0.5 + 0.4 * (1 - v) + 0.2 * band;
+                    r = Math.min(1, r);
+                    g = Math.min(1, g);
+                    b = Math.min(1, b);
+                    const idx = (y * width + x) * 3;
+                    colors[idx] = r;
+                    colors[idx + 1] = g;
+                    colors[idx + 2] = b;
+                }
+            }
+            return { width, height, colors };
+        }
+
+        function generateOvercastHDRI(width, height) {
+            const colors = new Float32Array(width * height * 3);
+            for (let y = 0; y < height; y++) {
+                const v = y / (height - 1);
+                const sky = 0.7 + 0.2 * (1 - v);
+                for (let x = 0; x < width; x++) {
+                    const fog = 0.02 * Math.sin((x / width) * Math.PI * 6);
+                    const val = Math.min(1, Math.max(0, sky + fog));
+                    const idx = (y * width + x) * 3;
+                    colors[idx] = val;
+                    colors[idx + 1] = val;
+                    colors[idx + 2] = val;
+                }
+            }
+            return { width, height, colors };
+        }
+
+        function generateSunsetHDRI(width, height) {
+            const colors = new Float32Array(width * height * 3);
+            for (let y = 0; y < height; y++) {
+                const v = y / (height - 1);
+                for (let x = 0; x < width; x++) {
+                    const u = x / (width - 1);
+                    const sun = Math.exp(-Math.pow((u - 0.75) * 10.0, 2)) * Math.exp(-Math.pow((v - 0.55) * 12.0, 2));
+                    let r = 0.15 + 0.8 * (1 - v) + 0.6 * sun;
+                    let g = 0.1 + 0.4 * (1 - v) + 0.2 * sun;
+                    let b = 0.2 + 0.1 * (1 - v) + 0.05 * sun;
+                    r = Math.min(1, r);
+                    g = Math.min(1, g);
+                    b = Math.min(1, b);
+                    const idx = (y * width + x) * 3;
+                    colors[idx] = r;
+                    colors[idx + 1] = g;
+                    colors[idx + 2] = b;
+                }
+            }
+            return { width, height, colors };
+        }
+
+        function generateNightHDRI(width, height) {
+            const colors = new Float32Array(width * height * 3);
+            for (let y = 0; y < height; y++) {
+                const v = y / (height - 1);
+                for (let x = 0; x < width; x++) {
+                    const u = x / (width - 1);
+                    const moon = Math.exp(-Math.pow((u - 0.3) * 14.0, 2)) * Math.exp(-Math.pow((v - 0.65) * 14.0, 2));
+                    let r = 0.02 + 0.05 * moon;
+                    let g = 0.03 + 0.08 * moon;
+                    let b = 0.06 + 0.2 * moon + 0.1 * v;
+                    r = Math.min(1, r);
+                    g = Math.min(1, g);
+                    b = Math.min(1, b);
+                    const idx = (y * width + x) * 3;
+                    colors[idx] = r;
+                    colors[idx + 1] = g;
+                    colors[idx + 2] = b;
+                }
+            }
+            return { width, height, colors };
+        }
+
+        function generatePurpleDuskHDRI(width, height) {
+            const colors = new Float32Array(width * height * 3);
+            for (let y = 0; y < height; y++) {
+                const v = y / (height - 1);
+                for (let x = 0; x < width; x++) {
+                    const u = x / (width - 1);
+                    const glow = Math.exp(-Math.pow((u - 0.6) * 9.0, 2)) * Math.exp(-Math.pow((v - 0.5) * 9.0, 2));
+                    let r = 0.2 + 0.4 * glow + 0.2 * (1 - v);
+                    let g = 0.1 + 0.2 * glow + 0.1 * (1 - v);
+                    let b = 0.3 + 0.4 * glow + 0.3 * v;
+                    r = Math.min(1, r);
+                    g = Math.min(1, g);
+                    b = Math.min(1, b);
+                    const idx = (y * width + x) * 3;
+                    colors[idx] = r;
+                    colors[idx + 1] = g;
+                    colors[idx + 2] = b;
+                }
+            }
+            return { width, height, colors };
+        }
+
+        function generateDesertHDRI(width, height) {
+            const colors = new Float32Array(width * height * 3);
+            for (let y = 0; y < height; y++) {
+                const v = y / (height - 1);
+                for (let x = 0; x < width; x++) {
+                    const u = x / (width - 1);
+                    const sun = Math.exp(-Math.pow((u - 0.5) * 10.0, 2)) * Math.exp(-Math.pow((v - 0.7) * 10.0, 2));
+                    let r = 0.3 + 0.6 * sun + 0.4 * (1 - v);
+                    let g = 0.25 + 0.4 * sun + 0.3 * (1 - v);
+                    let b = 0.15 + 0.2 * sun + 0.2 * v;
+                    r = Math.min(1, r);
+                    g = Math.min(1, g);
+                    b = Math.min(1, b);
+                    const idx = (y * width + x) * 3;
+                    colors[idx] = r;
+                    colors[idx + 1] = g;
+                    colors[idx + 2] = b;
+                }
+            }
+            return { width, height, colors };
+        }
+
+        function applyHDRIPattern() {
+            if (!lightboards || lightboards.children.length === 0) return;
+            const off = 0.1;
+            const width = args.lightstage.patterns.hdriResolution || 128;
+            const height = Math.floor(width / 2);
+            const pattern = args.lightstage.patterns.hdriPattern || 'gradient';
+            if (!hdriCache || hdriCache.width !== width || hdriCache.height !== height || hdriCache.pattern !== pattern) {
+                if (pattern === 'horizon') hdriCache = generateHorizonHDRI(width, height);
+                else if (pattern === 'sunrise') hdriCache = generateSunriseHDRI(width, height);
+                else if (pattern === 'coolSky') hdriCache = generateCoolSkyHDRI(width, height);
+                else if (pattern === 'overcast') hdriCache = generateOvercastHDRI(width, height);
+                else if (pattern === 'sunset') hdriCache = generateSunsetHDRI(width, height);
+                else if (pattern === 'night') hdriCache = generateNightHDRI(width, height);
+                else if (pattern === 'purpleDusk') hdriCache = generatePurpleDuskHDRI(width, height);
+                else if (pattern === 'desert') hdriCache = generateDesertHDRI(width, height);
+                else hdriCache = generateGradientHDRI(width, height);
+                hdriCache.pattern = pattern;
+            }
+
+            const lightDirs = lightboards.children.map(lb => lb.position.clone().normalize());
+            const sums = new Float32Array(lightDirs.length * 3);
+            const counts = new Uint32Array(lightDirs.length);
+
+            for (let y = 0; y < height; y++) {
+                const v = (y + 0.5) / height;
+                const theta = v * Math.PI;
+                const sinTheta = Math.sin(theta);
+                const cosTheta = Math.cos(theta);
+                for (let x = 0; x < width; x++) {
+                    const u = (x + 0.5) / width;
+                    const phi = u * Math.PI * 2;
+                    const dirX = sinTheta * Math.cos(phi);
+                    const dirY = sinTheta * Math.sin(phi);
+                    const dirZ = cosTheta;
+
+                    let bestIdx = 0;
+                    let bestDot = -1e9;
+                    for (let i = 0; i < lightDirs.length; i++) {
+                        const d = lightDirs[i];
+                        const dot = d.x * dirX + d.y * dirY + d.z * dirZ;
+                        if (dot > bestDot) {
+                            bestDot = dot;
+                            bestIdx = i;
+                        }
+                    }
+
+                    const idx = (y * width + x) * 3;
+                    sums[bestIdx * 3] += hdriCache.colors[idx];
+                    sums[bestIdx * 3 + 1] += hdriCache.colors[idx + 1];
+                    sums[bestIdx * 3 + 2] += hdriCache.colors[idx + 2];
+                    counts[bestIdx] += 1;
+                }
+            }
+
+            const intensity = Math.max(0.0, args.lightstage.patterns.hdriIntensity || 1.0);
+            const contrast = Math.max(0.01, args.lightstage.patterns.hdriContrast || 1.0);
+            if (!hdriBoardColors || hdriBoardColors.length !== lightboards.children.length * 3) {
+                hdriBoardColors = new Float32Array(lightboards.children.length * 3);
+            }
+            lightboards.children.forEach((lightboard, i) => {
+                const leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
+                const leds_init = lightboard.userData['leds'].colors;
+                const led_light = lightboard.getObjectByName('led_light');
+
+                const count = counts[i] || 1;
+                let r = Math.min(1, sums[i * 3] / count);
+                let g = Math.min(1, sums[i * 3 + 1] / count);
+                let b = Math.min(1, sums[i * 3 + 2] / count);
+                r = Math.min(1, Math.max(0, Math.pow(r, 1 / contrast)));
+                g = Math.min(1, Math.max(0, Math.pow(g, 1 / contrast)));
+                b = Math.min(1, Math.max(0, Math.pow(b, 1 / contrast)));
+
+                hdriBoardColors[i * 3] = r;
+                hdriBoardColors[i * 3 + 1] = g;
+                hdriBoardColors[i * 3 + 2] = b;
+
+                for (let j = 0; j < leds.count; j++) {
+                    const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
+                    if (isWhite) {
+                        leds.setXYZ(j, intensity * r, intensity * g, intensity * b);
+                    } else {
+                        leds.setXYZ(j, off * leds_init[3*j], off * leds_init[3*j+1], off * leds_init[3*j+2]);
+                    }
+                }
+
+                if (led_light) {
+                    led_light.visible = true;
+                    led_light.color.setRGB(r, g, b);
+                    led_light.intensity = intensity;
+                }
+                leds.needsUpdate = true;
+            });
         }
 
         function createPrimitiveMesh(type) {
@@ -720,7 +1350,7 @@
                     geometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
                     break;
             }
-            const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.0 });
+            const material = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.0 });
             const primitive = new THREE.Mesh(geometry, material);
             primitive.position.set(0, 0, 0);
             return primitive;
@@ -769,7 +1399,7 @@
             const chromeMat = new THREE.MeshStandardMaterial({
                 color: 0xffffff,
                 metalness: 1.0,
-                roughness: 0.1,
+                roughness: 0.0,
             });
 
             greyBall = new THREE.Mesh(geom, greyMat);
@@ -955,6 +1585,16 @@
             let off = 0.1;
             let curr = new Date().getTime();
             if (args.lightstage.patterns.active === 'olat') {
+                _olatColor.set(args.lightstage.patterns.olatColor || 0xffffff);
+                const olatIntensity = (typeof args.lightstage.patterns.olatIntensity === 'number') ? args.lightstage.patterns.olatIntensity : 1.0;
+                const olatAutoplay = args.lightstage.patterns.autoplay === true;
+                if (olatAutoplay && args.lightstage.patterns.olatPausedApplied) {
+                    args.lightstage.patterns.olatPausedApplied = false;
+                }
+                const olatInterval = 1000 / args.lightstage.patterns.fps;
+                const shouldStep = olatAutoplay
+                    ? (curr - args.lightstage.patterns.last_update > olatInterval)
+                    : (!args.lightstage.patterns.olatPausedApplied);
                 
                 // reset all lights to off
                 if (args.lightstage.patterns.idx == 0) {
@@ -968,7 +1608,7 @@
                     });
                 }
 
-                if (curr - args.lightstage.patterns.last_update > (1000/args.lightstage.patterns.fps)) {
+                if (shouldStep) {
                     args.lightstage.patterns.last_update = curr;
 
                     let n_all_white = args.lightstage.patterns.fps; // 1 second all white
@@ -978,6 +1618,10 @@
                     lightboards.children.forEach((lightboard, i) => {
                         let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
                         let leds_init = lightboard.userData['leds'].colors;
+                        const isOlatBoard = (i + (n_all_white + n_all_off) == args.lightstage.patterns.idx);
+                        if (!isOlatBoard) {
+                            _whiteColor.setRGB(leds_init[0], leds_init[1], leds_init[2]);
+                        }
                         let led_light = lightboard.getObjectByName('led_light');
                         if (args.lightstage.patterns.idx < n_all_white) {
                             // swith on all
@@ -997,8 +1641,9 @@
                             // switch on the current light board i
                             if (i+(n_all_white + n_all_off) == args.lightstage.patterns.idx) {
                                 for (let j = 0; j < leds.count; j++) {
-                                    if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
-                                        leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                                    const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
+                                    if (isWhite) {
+                                        leds.setXYZ(j, olatIntensity * _olatColor.r, olatIntensity * _olatColor.g, olatIntensity * _olatColor.b);
                                         led_light.visible = true;
                                     } else {
                                         leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
@@ -1007,7 +1652,8 @@
                             } else {
                                 // switch all other white LEDs off
                                 for (let j = 0; j < leds.count; j++) {
-                                    if (leds.getX(j)===leds.getY(j) && leds.getY(j)===leds.getZ(j)) {
+                                    const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
+                                    if (isWhite) {
                                         leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
                                         led_light.visible = false;
                                     }
@@ -1015,22 +1661,179 @@
                             }
                             
                         }
+                        if (led_light) {
+                            if (args.lightstage.patterns.idx >= (n_all_white + n_all_off)) {
+                                if (isOlatBoard) {
+                                    led_light.color.copy(_olatColor);
+                                    led_light.intensity = Math.max(0.0, olatIntensity);
+                                }
+                            }
+                        }
                         leds.needsUpdate = true;
                     });
-                    args.lightstage.patterns.idx = (args.lightstage.patterns.idx+1) % (lightboards.children.length+(n_all_white + n_all_off));
+                    if (olatAutoplay) {
+                        args.lightstage.patterns.idx = (args.lightstage.patterns.idx+1) % (lightboards.children.length+(n_all_white + n_all_off));
+                    } else {
+                        args.lightstage.patterns.olatPausedApplied = true;
+                    }
+                }
+            } else if (args.lightstage.patterns.active === 'hdri') {
+                const hdriAutoplay = args.lightstage.patterns.autoplay === true;
+                if (hdriAutoplay) {
+                    const hdriAutoFps = Math.max(0.1, (args.lightstage.patterns.fps || 1) * 0.1);
+                    const hdriInterval = 1000 / hdriAutoFps;
+                    if (!hdriLastUpdate) hdriLastUpdate = curr;
+                    if (curr - hdriLastUpdate > hdriInterval) {
+                        hdriLastUpdate = curr;
+                        const currentPattern = args.lightstage.patterns.hdriPattern || hdriPatternSequence[0];
+                        let patternIndex = hdriPatternSequence.indexOf(currentPattern);
+                        if (patternIndex < 0) patternIndex = 0;
+                        patternIndex = (patternIndex + 1) % hdriPatternSequence.length;
+                        args.lightstage.patterns.hdriPattern = hdriPatternSequence[patternIndex];
+                        hdriDirty = true;
+                    }
+                }
+                if (args.lightstage.patterns.idx >= 0 || hdriDirty) {
+                    applyHDRIPattern();
+                    args.lightstage.patterns.idx = -1;
+                    hdriDirty = false;
+                }
+            } else if (args.lightstage.patterns.active === 'all') {
+                if (allPhase === 'hdri') {
+                    const hdriAutoplay = args.lightstage.patterns.autoplay === true;
+                    if (hdriAutoplay) {
+                        const hdriAutoFps = Math.max(0.1, (args.lightstage.patterns.fps || 1) * 0.1);
+                        const hdriInterval = 1000 / hdriAutoFps;
+                        if (!hdriLastUpdate) hdriLastUpdate = curr;
+                        if (curr - hdriLastUpdate > hdriInterval) {
+                            hdriLastUpdate = curr;
+                            const currentPattern = args.lightstage.patterns.hdriPattern || hdriPatternSequence[0];
+                            let patternIndex = hdriPatternSequence.indexOf(currentPattern);
+                            if (patternIndex < 0) patternIndex = 0;
+                            patternIndex = (patternIndex + 1) % hdriPatternSequence.length;
+                            args.lightstage.patterns.hdriPattern = hdriPatternSequence[patternIndex];
+                            allHdriSteps += 1;
+                            hdriDirty = true;
+                            if (allHdriSteps >= hdriPatternSequence.length) {
+                                allPhase = 'olat';
+                                allHdriSteps = 0;
+                                args.lightstage.patterns.idx = 0;
+                                args.lightstage.patterns.last_update = curr;
+                            }
+                        }
+                    }
+                    if (hdriDirty) {
+                        applyHDRIPattern();
+                        hdriDirty = false;
+                    }
+                } else {
+                    _olatColor.set(args.lightstage.patterns.olatColor || 0xffffff);
+                    const olatIntensity = (typeof args.lightstage.patterns.olatIntensity === 'number') ? args.lightstage.patterns.olatIntensity : 1.0;
+                    const olatAutoplay = args.lightstage.patterns.autoplay === true;
+                    if (olatAutoplay && args.lightstage.patterns.olatPausedApplied) {
+                        args.lightstage.patterns.olatPausedApplied = false;
+                    }
+                    const olatInterval = 1000 / args.lightstage.patterns.fps;
+                    const shouldStep = olatAutoplay
+                        ? (curr - args.lightstage.patterns.last_update > olatInterval)
+                        : (!args.lightstage.patterns.olatPausedApplied);
+
+                    if (shouldStep) {
+                        args.lightstage.patterns.last_update = curr;
+
+                        let n_all_white = args.lightstage.patterns.fps;
+                        let n_all_off = args.lightstage.patterns.fps / 2;
+
+                        lightboards.children.forEach((lightboard, i) => {
+                            let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
+                            let leds_init = lightboard.userData['leds'].colors;
+                            const isOlatBoard = (i + (n_all_white + n_all_off) == args.lightstage.patterns.idx);
+                            if (!isOlatBoard) {
+                                _whiteColor.setRGB(leds_init[0], leds_init[1], leds_init[2]);
+                            }
+                            let led_light = lightboard.getObjectByName('led_light');
+                            if (args.lightstage.patterns.idx < n_all_white) {
+                                for (let j = 0; j < leds.count; j++) {
+                                    leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                                    led_light.visible = true;
+                                }
+                            } else if (args.lightstage.patterns.idx < (n_all_white + n_all_off)) {
+                                for (let j = 0; j < leds.count; j++) {
+                                    leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                                    led_light.visible = false;
+                                }
+                            } else {
+                                if (i+(n_all_white + n_all_off) == args.lightstage.patterns.idx) {
+                                    for (let j = 0; j < leds.count; j++) {
+                                        const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
+                                        if (isWhite) {
+                                            leds.setXYZ(j, olatIntensity * _olatColor.r, olatIntensity * _olatColor.g, olatIntensity * _olatColor.b);
+                                            led_light.visible = true;
+                                        } else {
+                                            leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                                        }
+                                    }
+                                } else {
+                                    for (let j = 0; j < leds.count; j++) {
+                                        const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
+                                        if (isWhite) {
+                                            leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
+                                            led_light.visible = false;
+                                        }
+                                    }
+                                }
+                            }
+                            if (led_light) {
+                                if (args.lightstage.patterns.idx >= (n_all_white + n_all_off)) {
+                                    if (isOlatBoard) {
+                                        led_light.color.copy(_olatColor);
+                                        led_light.intensity = Math.max(0.0, olatIntensity);
+                                    }
+                                }
+                            }
+                            leds.needsUpdate = true;
+                        });
+
+                        if (olatAutoplay) {
+                            const total = lightboards.children.length + (n_all_white + n_all_off);
+                            const nextIdx = (args.lightstage.patterns.idx + 1) % total;
+                            if (nextIdx === 0) {
+                                allPhase = 'hdri';
+                                hdriDirty = true;
+                                hdriLastUpdate = 0;
+                            }
+                            args.lightstage.patterns.idx = nextIdx;
+                        } else {
+                            args.lightstage.patterns.olatPausedApplied = true;
+                        }
+                    }
                 }
             } else if (args.lightstage.patterns.active == 'warmup') {
-                if (args.lightstage.patterns.idx >= 0) {
+                _olatColor.set(args.lightstage.patterns.olatColor || 0xffffff);
+                const olatIntensity = (typeof args.lightstage.patterns.olatIntensity === 'number') ? args.lightstage.patterns.olatIntensity : 1.0;
+                const warmupChanged = (_warmupIntensity !== olatIntensity) || !_warmupColor.equals(_olatColor);
+                if (args.lightstage.patterns.idx >= 0 || warmupChanged) {
                     lightboards.children.forEach((lightboard, i) => {
                         let leds = lightboard.getObjectByName('leds').geometry.attributes.customColor;
                         let leds_init = lightboard.userData['leds'].colors;
                         let led_light = lightboard.getObjectByName('led_light');
                         for (let j = 0; j < leds.count; j++) {
-                            leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                            const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
+                            if (isWhite) {
+                                leds.setXYZ(j, olatIntensity * _olatColor.r, olatIntensity * _olatColor.g, olatIntensity * _olatColor.b);
+                            } else {
+                                leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
+                            }
                             led_light.visible = true;
+                        }
+                        if (led_light) {
+                            led_light.color.copy(_olatColor);
+                            led_light.intensity = Math.max(0.0, olatIntensity);
                         }
                         leds.needsUpdate = true;
                     });
+                    _warmupColor.copy(_olatColor);
+                    _warmupIntensity = olatIntensity;
                     args.lightstage.patterns.idx = -1; // set this to static, other dynamic patterns will automatically make this positive
                 }
             } else if (args.lightstage.patterns.active == 'off') {
@@ -1333,6 +2136,17 @@
         const _illuminationPos = new THREE.Vector3();
         const _illuminationOffset = new THREE.Vector3();
         const _illuminationLightPos = new THREE.Vector3();
+        const _olatColor = new THREE.Color();
+        const _whiteColor = new THREE.Color();
+        const _warmupColor = new THREE.Color();
+        let _warmupIntensity = -1;
+        let hdriCache = null;
+        let hdriDirty = true;
+        let hdriBoardColors = null;
+        const hdriPatternSequence = ['gradient', 'horizon', 'sunrise', 'coolSky', 'overcast', 'sunset', 'night', 'purpleDusk', 'desert'];
+        let hdriLastUpdate = 0;
+        let allPhase = 'hdri';
+        let allHdriSteps = 0;
 
         let render_mode = 'points';
         const args_init = {
@@ -1343,6 +2157,32 @@
                 object: {
                     type: 'bunny',
                     scale: 1,
+                    material: {
+                        preset: 'metal',
+                        brdf: {
+                            baseColor: 0xffffff,
+                            roughness: 0.2,
+                            metalness: 1.0,
+                            specularIntensity: 1.0,
+                            specularColor: 0xffffff,
+                            ior: 1.5,
+                            transmission: 0.0,
+                            thickness: 0.0,
+                            attenuationColor: 0xffffff,
+                            attenuationDistance: 0.0,
+                            clearcoat: 0.0,
+                            clearcoatRoughness: 0.0,
+                            sheen: 0.0,
+                            sheenColor: 0xffffff,
+                            sheenRoughness: 0.5,
+                            iridescence: 0.0,
+                            iridescenceIOR: 1.3,
+                            iridescenceThicknessMin: 100,
+                            iridescenceThicknessMax: 400,
+                            emissive: 0x000000,
+                            emissiveIntensity: 0.0,
+                        },
+                    },
                 },
                 lightboard: {
                     show: true,
@@ -1373,10 +2213,18 @@
                     flashSpeed: 0,  // Speed of the light stage rig flashing
                 },
                 patterns: {
-                    active: 'olat',
+                    active: 'all',
                     idx: 0,
                     last_update: new Date().getTime(),
                     fps: 10,
+                    autoplay: true,
+                    olatColor: 0xffffff,
+                    olatIntensity: 3.0,
+                    hdriPattern: 'gradient',
+                    hdriIntensity: 1.0,
+                    hdriContrast: 0.3,
+                    hdriResolution: 128,
+                    olatPausedApplied: false,
                 }
             },
             controls: {
