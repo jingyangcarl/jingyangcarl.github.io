@@ -332,6 +332,37 @@
             layoutPreviewCanvas.style.zIndex = '996';
             document.body.appendChild(layoutPreviewCanvas);
 
+            // illumination previews (separate renderers for circular masks)
+            illuminationPreviewGreyRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            illuminationPreviewGreyRenderer.setClearColor(0x000000, 0);
+            illuminationPreviewGreyRenderer.setPixelRatio(window.devicePixelRatio || 1);
+            illuminationPreviewGreyRenderer.setSize(64, 64);
+            illuminationPreviewGreyCanvas = illuminationPreviewGreyRenderer.domElement;
+            illuminationPreviewGreyCanvas.id = 'illuminationPreviewGrey';
+            illuminationPreviewGreyCanvas.style.position = 'absolute';
+            illuminationPreviewGreyCanvas.style.left = '0';
+            illuminationPreviewGreyCanvas.style.top = '0';
+            illuminationPreviewGreyCanvas.style.pointerEvents = 'none';
+            illuminationPreviewGreyCanvas.style.display = 'none';
+            illuminationPreviewGreyCanvas.style.borderRadius = '50%';
+            illuminationPreviewGreyCanvas.style.zIndex = '995';
+            document.body.appendChild(illuminationPreviewGreyCanvas);
+
+            illuminationPreviewChromeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            illuminationPreviewChromeRenderer.setClearColor(0x000000, 0);
+            illuminationPreviewChromeRenderer.setPixelRatio(window.devicePixelRatio || 1);
+            illuminationPreviewChromeRenderer.setSize(64, 64);
+            illuminationPreviewChromeCanvas = illuminationPreviewChromeRenderer.domElement;
+            illuminationPreviewChromeCanvas.id = 'illuminationPreviewChrome';
+            illuminationPreviewChromeCanvas.style.position = 'absolute';
+            illuminationPreviewChromeCanvas.style.left = '0';
+            illuminationPreviewChromeCanvas.style.top = '0';
+            illuminationPreviewChromeCanvas.style.pointerEvents = 'none';
+            illuminationPreviewChromeCanvas.style.display = 'none';
+            illuminationPreviewChromeCanvas.style.borderRadius = '50%';
+            illuminationPreviewChromeCanvas.style.zIndex = '994';
+            document.body.appendChild(illuminationPreviewChromeCanvas);
+
             layoutPreviewScene = new THREE.Scene();
             layoutPreviewCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
             layoutPreviewCamera.position.copy(camera.position);
@@ -2285,9 +2316,6 @@
                 const miniX = stackX;
                 const miniY = equirectY + clampedHeight + stackGap;
 
-                const halfWidth = Math.max(1, Math.floor(clampedWidth / 2));
-                const rightWidth = Math.max(1, clampedWidth - halfWidth);
-
                 const showEquirectPreview = args.lightstage.patterns.active === 'hdri' || args.lightstage.patterns.active === 'all' || args.lightstage.patterns.active === 'olat';
                 const equirectTop = Math.max(0, window.innerHeight - (equirectY + clampedHeight));
                 const miniTop = Math.max(0, window.innerHeight - (miniY + clampedHeight));
@@ -2298,22 +2326,31 @@
                     equirectCaption.style.top = `${equirectTop + clampedHeight - captionPad}px`;
                     equirectCaption.style.display = showEquirectPreview ? 'block' : 'none';
                 }
+                const miniDiameter = Math.max(1, Math.min(clampedHeight, clampedWidth));
+                const miniCircleY = miniY + Math.max(0, Math.floor((clampedHeight - miniDiameter) / 2));
+                const miniCircleTop = Math.max(0, window.innerHeight - (miniCircleY + miniDiameter));
+                const circleGap = 6;
+                const totalCircleWidth = miniDiameter * 2 + circleGap;
+                const circleStartX = miniX + Math.max(0, clampedWidth - totalCircleWidth);
+                const greyCircleX = circleStartX;
+                const chromeCircleX = circleStartX + miniDiameter + circleGap;
+
                 if (greyBallCaption) {
                     greyBallCaption.textContent = 'Gray ball';
-                    greyBallCaption.style.left = `${miniX + halfWidth - captionPad}px`;
-                    greyBallCaption.style.top = `${miniTop + clampedHeight - captionPad}px`;
+                    greyBallCaption.style.left = `${greyCircleX + miniDiameter - captionPad}px`;
+                    greyBallCaption.style.top = `${miniCircleTop + miniDiameter - captionPad}px`;
                     greyBallCaption.style.display = 'block';
                 }
                 if (chromeBallCaption) {
                     chromeBallCaption.textContent = 'Chrome ball';
-                    chromeBallCaption.style.left = `${miniX + clampedWidth - captionPad}px`;
-                    chromeBallCaption.style.top = `${miniTop + clampedHeight - captionPad}px`;
+                    chromeBallCaption.style.left = `${chromeCircleX + miniDiameter - captionPad}px`;
+                    chromeBallCaption.style.top = `${miniCircleTop + miniDiameter - captionPad}px`;
                     chromeBallCaption.style.display = 'block';
                 }
                 if (illuminationCaption) {
                     illuminationCaption.textContent = `Illumination preview — ${cameraLabel}`;
-                    illuminationCaption.style.left = `${miniX + clampedWidth - captionPad}px`;
-                    illuminationCaption.style.top = `${miniTop - captionPad}px`;
+                    illuminationCaption.style.left = `${chromeCircleX + miniDiameter - captionPad}px`;
+                    illuminationCaption.style.top = `${miniCircleTop - captionPad}px`;
                     illuminationCaption.style.display = 'block';
                 }
 
@@ -2374,26 +2411,33 @@
                     }
                 }
 
-                renderer.setScissorTest(true);
-                renderer.setClearColor(0x000000, 0);
-                // clear only the mini preview rect (not the full inset)
-                renderer.setScissor(miniX, miniY, clampedWidth, clampedHeight);
-                renderer.setViewport(miniX, miniY, clampedWidth, clampedHeight);
-                renderer.clear(true, true, true);
+                if (illuminationPreviewGreyRenderer && illuminationPreviewGreyCanvas) {
+                    illuminationPreviewGreyCanvas.style.display = 'block';
+                    illuminationPreviewGreyCanvas.style.left = `${greyCircleX}px`;
+                    illuminationPreviewGreyCanvas.style.top = `${miniCircleTop}px`;
+                    illuminationPreviewGreyCanvas.style.width = `${miniDiameter}px`;
+                    illuminationPreviewGreyCanvas.style.height = `${miniDiameter}px`;
+                    illuminationPreviewGreyRenderer.setSize(miniDiameter, miniDiameter, false);
+                    illuminationPreviewGreyRenderer.setClearColor(0x000000, 0);
+                    illuminationPreviewGreyRenderer.clear(true, true, true);
+                    illuminationCameraGrey.aspect = 1;
+                    illuminationCameraGrey.updateProjectionMatrix();
+                    illuminationPreviewGreyRenderer.render(illuminationSceneGrey, illuminationCameraGrey);
+                }
 
-                renderer.setScissor(miniX, miniY, halfWidth, clampedHeight);
-                renderer.setViewport(miniX, miniY, halfWidth, clampedHeight);
-                illuminationCameraGrey.aspect = halfWidth / clampedHeight;
-                illuminationCameraGrey.updateProjectionMatrix();
-                renderer.render(illuminationSceneGrey, illuminationCameraGrey);
-
-                renderer.setScissor(miniX + halfWidth, miniY, rightWidth, clampedHeight);
-                renderer.setViewport(miniX + halfWidth, miniY, rightWidth, clampedHeight);
-                illuminationCameraChrome.aspect = rightWidth / clampedHeight;
-                illuminationCameraChrome.updateProjectionMatrix();
-                renderer.render(illuminationSceneChrome, illuminationCameraChrome);
-
-                renderer.setScissorTest(false);
+                if (illuminationPreviewChromeRenderer && illuminationPreviewChromeCanvas) {
+                    illuminationPreviewChromeCanvas.style.display = 'block';
+                    illuminationPreviewChromeCanvas.style.left = `${chromeCircleX}px`;
+                    illuminationPreviewChromeCanvas.style.top = `${miniCircleTop}px`;
+                    illuminationPreviewChromeCanvas.style.width = `${miniDiameter}px`;
+                    illuminationPreviewChromeCanvas.style.height = `${miniDiameter}px`;
+                    illuminationPreviewChromeRenderer.setSize(miniDiameter, miniDiameter, false);
+                    illuminationPreviewChromeRenderer.setClearColor(0x000000, 0);
+                    illuminationPreviewChromeRenderer.clear(true, true, true);
+                    illuminationCameraChrome.aspect = 1;
+                    illuminationCameraChrome.updateProjectionMatrix();
+                    illuminationPreviewChromeRenderer.render(illuminationSceneChrome, illuminationCameraChrome);
+                }
 
                 if (showEquirectPreview && hdriPreviewCanvas) {
                     hdriPreviewCanvas.style.display = 'block';
@@ -2407,6 +2451,8 @@
                 if (greyBallCaption) greyBallCaption.style.display = 'none';
                 if (chromeBallCaption) chromeBallCaption.style.display = 'none';
                 if (illuminationCaption) illuminationCaption.style.display = 'none';
+                if (illuminationPreviewGreyCanvas) illuminationPreviewGreyCanvas.style.display = 'none';
+                if (illuminationPreviewChromeCanvas) illuminationPreviewChromeCanvas.style.display = 'none';
                 if (layoutPreviewCanvas) layoutPreviewCanvas.style.display = 'none';
                 if (layoutPreviewCaption) layoutPreviewCaption.style.display = 'none';
                 if (layoutPreviewStats) layoutPreviewStats.style.display = 'none';
@@ -2662,6 +2708,8 @@
         let illuminationLightsGrey = [], illuminationLightsChrome = [];
         let chromeBall, greyBall;
         let layoutPreviewRenderer, layoutPreviewScene, layoutPreviewCamera, layoutPreviewCanvas, layoutPreviewRig;
+        let illuminationPreviewGreyRenderer, illuminationPreviewGreyCanvas;
+        let illuminationPreviewChromeRenderer, illuminationPreviewChromeCanvas;
         // multiple inset cameras and helpers
         let cameraHelper;
         let cameraViews = [];
