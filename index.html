@@ -745,6 +745,12 @@
             gui_illumination.open();
             gui_illumination.add( args.render.sideRender, 'illuminationView', { 'Selected Camera': 'selected', 'Perspective Camera': 'overall' } ).name('Illumination Coords').listen();
 
+            let gui_save = gui_render.addFolder('Save');
+            gui_save.open();
+            gui_save.add(args.render.save, 'transparentBackground').name('Transparent Background').listen();
+            gui_save.add({ saveSideRenderer: () => saveSideRenderer() }, 'saveSideRenderer').name('Save Side Renderer');
+            gui_save.add({ saveIlluminationSet: () => saveIlluminationSet() }, 'saveIlluminationSet').name('Save Illumination Set');
+
             let gui_projects = gui.addFolder('Projects');
             gui_projects.open();
             gui_projects.add( args.projects, 'show').name('Show Projects').onChange(v => {
@@ -2153,11 +2159,13 @@
         function applyHDRIEnvMap() {
             if (!scene) return;
             const patterns = args.lightstage.patterns;
-            const width = patterns.hdriResolution || 128;
-            const height = Math.floor(width / 2);
             const pattern = patterns.hdriPattern || 'gradient';
+            const isCustom = pattern === 'custom1' || pattern === 'custom2';
+            const customEntry = isCustom ? customHdriCache[pattern] : null;
+            const width = isCustom ? (customEntry ? customEntry.width : 512) : (patterns.hdriResolution || 128);
+            const height = isCustom ? (customEntry ? customEntry.height : 256) : Math.floor(width / 2);
             
-            if (!hdriCache || hdriCache.width !== width || hdriCache.height !== height || hdriCache.pattern !== pattern) {
+            if (!hdriCache || hdriCache.width !== width || hdriCache.height !== height || hdriCache.pattern !== pattern || (isCustom && hdriCache !== customEntry)) {
                 if (pattern === 'horizon') hdriCache = generateHorizonHDRI(width, height);
                 else if (pattern === 'sunrise') hdriCache = generateSunriseHDRI(width, height);
                 else if (pattern === 'coolSky') hdriCache = generateCoolSkyHDRI(width, height);
@@ -2166,8 +2174,16 @@
                 else if (pattern === 'night') hdriCache = generateNightHDRI(width, height);
                 else if (pattern === 'purpleDusk') hdriCache = generatePurpleDuskHDRI(width, height);
                 else if (pattern === 'desert') hdriCache = generateDesertHDRI(width, height);
-                else hdriCache = generateGradientHDRI(width, height);
-                hdriCache.pattern = pattern;
+                else if (isCustom) {
+                    if (customEntry) {
+                        hdriCache = customEntry;
+                    } else {
+                        hdriCache = generateGradientHDRI(width, height);
+                    }
+                } else {
+                    hdriCache = generateGradientHDRI(width, height);
+                }
+                if (!isCustom || !customEntry) hdriCache.pattern = pattern;
                 hdriPreviewDirty = true;
             }
 
@@ -3212,6 +3228,126 @@
             labelRenderer.domElement.style.webkitMaskSize = '100% 100%';
         }
 
+        function buildTimestampTag() {
+            const now = new Date();
+            const pad = (v) => String(v).padStart(2, '0');
+            const y = now.getFullYear();
+            const m = pad(now.getMonth() + 1);
+            const d = pad(now.getDate());
+            const hh = pad(now.getHours());
+            const mm = pad(now.getMinutes());
+            const ss = pad(now.getSeconds());
+            return `${y}${m}${d}_${hh}${mm}${ss}`;
+        }
+
+        function downloadCanvasPng(canvas, filename, options = {}) {
+            if (!canvas) return;
+            const { background = null } = options;
+            const out = document.createElement('canvas');
+            out.width = canvas.width;
+            out.height = canvas.height;
+            const ctx = out.getContext('2d');
+            if (background) {
+                ctx.fillStyle = background;
+                ctx.fillRect(0, 0, out.width, out.height);
+            } else {
+                ctx.clearRect(0, 0, out.width, out.height);
+            }
+            ctx.drawImage(canvas, 0, 0);
+            const link = document.createElement('a');
+            link.href = out.toDataURL('image/png');
+            link.download = filename;
+            link.click();
+        }
+
+        function saveSideRenderer() {
+            if (!renderer || !renderer.domElement) return;
+            const insetW = (typeof insetWidth === 'number' && insetWidth > 0) ? insetWidth : 0;
+            const insetH = (typeof insetHeight === 'number' && insetHeight > 0) ? insetHeight : 0;
+            if (insetW <= 0 || insetH <= 0) return;
+
+            if (!saveRenderer) {
+                saveRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+                saveRenderer.setPixelRatio(1);
+            }
+
+            const insetCamera = cameraViews[selectedCameraIndex] || cameraObject;
+            if (!insetCamera) return;
+            const prevAspect = insetCamera.aspect;
+            insetCamera.aspect = insetW / insetH;
+            insetCamera.updateProjectionMatrix();
+
+            saveRenderer.setSize(insetW, insetH, false);
+            const transparent = args.render.save && args.render.save.transparentBackground;
+            saveRenderer.setClearColor(0x000000, transparent ? 0 : 1);
+            saveRenderer.clear(true, true, true);
+            saveRenderer.render(scene, insetCamera);
+
+            insetCamera.aspect = prevAspect;
+            insetCamera.updateProjectionMatrix();
+
+            const tag = buildTimestampTag();
+            downloadCanvasPng(saveRenderer.domElement, `side_renderer_${tag}.png`, {
+                background: transparent ? null : '#000000'
+            });
+        }
+
+        function saveIlluminationSet() {
+            const tag = buildTimestampTag();
+            const transparent = args.render.save && args.render.save.transparentBackground;
+            const background = transparent ? null : '#000000';
+            const baseCamera = (args.render.sideRender.illuminationView === 'overall') ? camera : cameraObject;
+            if (baseCamera && illuminationCameraGrey && illuminationCameraChrome) {
+                _illuminationPos.set(0, 0, 0);
+                _illuminationDir.copy(baseCamera.position).sub(_illuminationPos);
+                if (_illuminationDir.lengthSq() < 1e-6) {
+                    _illuminationDir.set(0, 0, 1);
+                } else {
+                    _illuminationDir.normalize();
+                }
+                _illuminationOffset.copy(baseCamera.up).normalize().multiplyScalar(0.25);
+                _illuminationDir.add(_illuminationOffset).normalize();
+                illuminationCameraGrey.position.copy(_illuminationPos)
+                    .addScaledVector(_illuminationDir, 0.6);
+                illuminationCameraChrome.position.copy(illuminationCameraGrey.position);
+                illuminationCameraGrey.lookAt(_illuminationPos);
+                illuminationCameraChrome.lookAt(_illuminationPos);
+                illuminationCameraGrey.aspect = 1;
+                illuminationCameraChrome.aspect = 1;
+                illuminationCameraGrey.updateProjectionMatrix();
+                illuminationCameraChrome.updateProjectionMatrix();
+            }
+
+            syncIlluminationLights();
+
+            if (illuminationPreviewGreyCanvas) {
+                const sizeGrey = Math.max(1, illuminationPreviewGreyCanvas.width || 256);
+                renderIlluminationBallToPng(illuminationSceneGrey, illuminationCameraGrey, sizeGrey, `illumination_grey_${tag}.png`, transparent, background);
+            }
+            if (illuminationPreviewChromeCanvas) {
+                const sizeChrome = Math.max(1, illuminationPreviewChromeCanvas.width || 256);
+                renderIlluminationBallToPng(illuminationSceneChrome, illuminationCameraChrome, sizeChrome, `illumination_chrome_${tag}.png`, transparent, background);
+            }
+            if (hdriPreviewCanvas) {
+                downloadCanvasPng(hdriPreviewCanvas, `illumination_hdri_equirect_${tag}.png`, { background });
+            }
+            if (olatPreviewCanvas) {
+                downloadCanvasPng(olatPreviewCanvas, `illumination_lights_equirect_${tag}.png`, { background });
+            }
+        }
+
+        function renderIlluminationBallToPng(sceneToRender, cameraToRender, size, filename, transparent, background) {
+            if (!sceneToRender || !cameraToRender) return;
+            const tmpRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+            tmpRenderer.setPixelRatio(1);
+            tmpRenderer.setSize(size, size, false);
+            tmpRenderer.setClearColor(0x000000, transparent ? 0 : 1);
+            tmpRenderer.clear(true, true, true);
+            tmpRenderer.render(sceneToRender, cameraToRender);
+            downloadCanvasPng(tmpRenderer.domElement, filename, { background });
+            tmpRenderer.dispose();
+        }
+
         function setLoadingVisible(isVisible) {
             if (!loadingLabel) return;
             loadingLabel.style.display = isVisible ? 'block' : 'none';
@@ -3673,6 +3809,7 @@
         // point that cameras should look at (object center). default origin until object loads
         let objectTarget = new THREE.Vector3(0,0,0);
         let controls;
+        let saveRenderer;
         let mesh, helper, bvh;
         let sphereInstance, lineSegments, sphereLabels;
         let insetWidth, insetHeight;
@@ -3808,6 +3945,9 @@
             },
             render: {
                 showAxis: false,
+                save: {
+                    transparentBackground: true,
+                },
                 rayCaster: {
                     radiusScalar: 1, // the radius scalar * lightstage.radius is the radius rays
                     rays: {
