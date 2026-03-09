@@ -132,6 +132,7 @@
         import GUI from 'lil-gui';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import WebGPU from 'three/addons/capabilities/WebGPU.js';
         import WebGL from 'three/addons/capabilities/WebGL.js';
         import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js';
@@ -610,19 +611,22 @@
             gui_ls_object.open();
             gui_ls_object.add( args.lightstage.object, 'type', {
                 Bunny: 'bunny',
+                Goose: 'goose',
+                'Cat and Seal': 'catAndSeal',
                 Sphere: 'sphere',
                 'Torus Knot': 'torusKnot',
                 Box: 'box'
             }).name('Model').onChange(v => loadObject(v)).listen();
             gui_ls_object.add( args.lightstage.object, 'scale', 0.1, 5, 0.1 ).name('Size Scalar').onChange(v => {
                 if (mesh) {
-                    const baseScale = (args.lightstage.object.type === 'bunny') ? 0.01 : 0.25;
+                    const baseScale = getObjectBaseScale(args.lightstage.object.type);
                     mesh.scale.setScalar(baseScale * v);
                 }
             }).listen();
 
             let gui_ls_object_material = gui_ls_object.addFolder('Material');
             gui_ls_object_material.open();
+            gui_ls_object_material.add(args.lightstage.object.material, 'useImportedTextures').name('Use Imported Textures').onChange(() => applyObjectMaterial()).listen();
             gui_ls_object_material.add( args.lightstage.object.material, 'preset', {
                 Matte: 'matte',
                 Metal: 'metal',
@@ -763,6 +767,9 @@
                 const infoDiv = document.getElementById('info');
                 if (infoDiv) infoDiv.style.display = v ? 'block' : 'none';
             }).listen();
+            gui_projects.add(args.projects, 'accessCode').name('Access Code').onFinishChange((v) => {
+                applyProjectsAccessCode(v);
+            }).listen();
 
             gui.add( args.controls, 'reset').name('Reset').onChange(v => onclick_btn_reset()).listen();
             gui.add( args.controls, 'fullscreen').name('Fullscreen').listen();
@@ -773,6 +780,39 @@
         function setupStats() {
             stats = new Stats();
             document.body.appendChild(stats.dom);
+        }
+
+        function applyProjectsAccessCode(code) {
+            const normalized = String(code || '').trim();
+            let targetModel = '';
+            let targetPattern = '';
+            if (normalized === '03162025') {
+                targetModel = 'goose';
+                targetPattern = 'custom1';
+            } else if (normalized === '03162026') {
+                targetModel = 'catAndSeal';
+                targetPattern = 'custom2';
+            } else {
+                return;
+            }
+
+            args.lightstage.object.type = targetModel;
+            loadObject(targetModel);
+
+            args.lightstage.patterns.active = 'hdri';
+            args.lightstage.patterns.hdriPattern = targetPattern;
+            args.lightstage.patterns.autoplay = false;
+            args.lightstage.patterns.last_update = new Date().getTime();
+
+            hdriDirty = true;
+            hdriPreviewDirty = true;
+            applyHDRIPattern();
+
+            if (window.patternsActiveCtrl) window.patternsActiveCtrl.updateDisplay();
+            if (window.hdriPatternCtrl) window.hdriPatternCtrl.updateDisplay();
+            if (window.patternsAutoplayCtrl) window.patternsAutoplayCtrl.updateDisplay();
+
+            args.projects.accessCode = '';
         }
 
         function buildPoints(positions, sizes, colors) {
@@ -1236,14 +1276,57 @@
             brdfOverrideActive = false;
             brdfOverrideView = '';
             bvh = null;
+            objectMeshStats.vertices = 0;
+            objectMeshStats.faces = 0;
+        }
+
+        function updateObjectMeshStats(targetMesh) {
+            objectMeshStats.vertices = 0;
+            objectMeshStats.faces = 0;
+            if (!targetMesh || !targetMesh.geometry) return;
+
+            const geometry = targetMesh.geometry;
+            const positionAttr = geometry.getAttribute('position');
+            objectMeshStats.vertices = positionAttr ? positionAttr.count : 0;
+
+            if (geometry.index) {
+                objectMeshStats.faces = Math.floor(geometry.index.count / 3);
+            } else {
+                objectMeshStats.faces = Math.floor(objectMeshStats.vertices / 3);
+            }
+        }
+
+        function smoothMeshForRendering(targetMesh) {
+            if (!targetMesh) return;
+
+            targetMesh.traverse((child) => {
+                if (!child.isMesh || !child.geometry) return;
+
+                child.geometry.computeVertexNormals();
+
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                materials.forEach((mat) => {
+                    if (!mat) return;
+                    mat.flatShading = false;
+                    mat.needsUpdate = true;
+                });
+            });
+        }
+
+        function getObjectBaseScale(type) {
+            if (type === 'bunny') return 0.01;
+            if (type === 'goose' || type === 'catAndSeal') return 0.5;
+            return 0.25;
         }
 
         function finalizeMesh(newMesh) {
             mesh = newMesh;
             scene.add(mesh);
+            smoothMeshForRendering(mesh);
+            updateObjectMeshStats(mesh);
 
             if (args && args.lightstage && args.lightstage.object && typeof args.lightstage.object.scale === 'number') {
-                const baseScale = (args.lightstage.object.type === 'bunny') ? 0.01 : 0.25;
+                const baseScale = getObjectBaseScale(args.lightstage.object.type);
                 mesh.scale.setScalar(baseScale * args.lightstage.object.scale);
             }
 
@@ -1427,6 +1510,10 @@
 
         function applyObjectMaterial() {
             if (!mesh || !args || !args.lightstage || !args.lightstage.object || !args.lightstage.object.material) return;
+            if (mesh.userData && mesh.userData.useImportedMaterial && args.lightstage.object.material.useImportedTextures) {
+                brdfPreviewDirty = true;
+                return;
+            }
             const brdf = args.lightstage.object.material.brdf;
             const applyToMesh = (m) => {
                 let mat = m.material;
@@ -1959,55 +2046,73 @@
         }
 
         function loadDefaultCustomImages() {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                // Load custom1 (normal)
-                const canvas1 = document.createElement('canvas');
-                canvas1.width = 512;
-                canvas1.height = 256;
-                const ctx1 = canvas1.getContext('2d');
-                ctx1.imageSmoothingEnabled = true;
-                ctx1.imageSmoothingQuality = 'high';
-                ctx1.drawImage(img, 0, 0, 512, 256);
-                const imageData1 = ctx1.getImageData(0, 0, 512, 256);
-                const data1 = imageData1.data;
-                const colors1 = new Float32Array(512 * 256 * 3);
-                for (let i = 0; i < 512 * 256; i++) {
-                    colors1[i * 3] = data1[i * 4] / 255;
-                    colors1[i * 3 + 1] = data1[i * 4 + 1] / 255;
-                    colors1[i * 3 + 2] = data1[i * 4 + 2] / 255;
+            const toCacheEntry = (img, flipX, slot) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 256;
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                if (flipX) {
+                    ctx.save();
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(img, -512, 0, 512, 256);
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(img, 0, 0, 512, 256);
                 }
-                customHdriCache['custom1'] = { width: 512, height: 256, colors: colors1, pattern: 'custom1' };
-                
-                // Load custom2 (horizontally flipped)
-                const canvas2 = document.createElement('canvas');
-                canvas2.width = 512;
-                canvas2.height = 256;
-                const ctx2 = canvas2.getContext('2d');
-                ctx2.imageSmoothingEnabled = true;
-                ctx2.imageSmoothingQuality = 'high';
-                ctx2.save();
-                ctx2.scale(-1, 1);
-                ctx2.drawImage(img, -512, 0, 512, 256);
-                ctx2.restore();
-                const imageData2 = ctx2.getImageData(0, 0, 512, 256);
-                const data2 = imageData2.data;
-                const colors2 = new Float32Array(512 * 256 * 3);
+                const imageData = ctx.getImageData(0, 0, 512, 256);
+                const data = imageData.data;
+                const colors = new Float32Array(512 * 256 * 3);
                 for (let i = 0; i < 512 * 256; i++) {
-                    colors2[i * 3] = data2[i * 4] / 255;
-                    colors2[i * 3 + 1] = data2[i * 4 + 1] / 255;
-                    colors2[i * 3 + 2] = data2[i * 4 + 2] / 255;
+                    colors[i * 3] = data[i * 4] / 255;
+                    colors[i * 3 + 1] = data[i * 4 + 1] / 255;
+                    colors[i * 3 + 2] = data[i * 4 + 2] / 255;
                 }
-                customHdriCache['custom2'] = { width: 512, height: 256, colors: colors2, pattern: 'custom2' };
-                
-                hdriDirty = true;
-                hdriPreviewDirty = true;
+                customHdriCache[slot] = { width: 512, height: 256, colors, pattern: slot };
             };
-            img.onerror = () => {
-                console.warn('Failed to load default custom HDRI image: static/img/sample.png');
+
+            const loadImage = (src, onLoad, onError) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => onLoad(img);
+                img.onerror = onError;
+                img.src = src;
             };
-            img.src = 'static/img/sample.png';
+
+            // custom1 uses vista.jpg; fallback to sample.png if missing
+            loadImage('static/img/vista.jpg',
+                (imgVista) => {
+                    toCacheEntry(imgVista, false, 'custom1');
+                    hdriDirty = true;
+                    hdriPreviewDirty = true;
+                },
+                () => {
+                    console.warn('Failed to load default custom1 HDRI image: static/img/vista.jpg (fallback to static/img/sample.png)');
+                    loadImage('static/img/sample.png',
+                        (imgFallback) => {
+                            toCacheEntry(imgFallback, false, 'custom1');
+                            hdriDirty = true;
+                            hdriPreviewDirty = true;
+                        },
+                        () => {
+                            console.warn('Failed to load fallback custom1 HDRI image: static/img/sample.png');
+                        }
+                    );
+                }
+            );
+
+            // custom2 keeps the existing sample.png (horizontally flipped) behavior
+            loadImage('static/img/sample.png',
+                (imgSample) => {
+                    toCacheEntry(imgSample, true, 'custom2');
+                    hdriDirty = true;
+                    hdriPreviewDirty = true;
+                },
+                () => {
+                    console.warn('Failed to load default custom2 HDRI image: static/img/sample.png');
+                }
+            );
         }
 
         function applyHDRIPattern() {
@@ -2270,10 +2375,104 @@
             } );
         }
 
+        function requestGlbRoot(path) {
+            if (glbSceneCache.has(path)) {
+                return Promise.resolve(glbSceneCache.get(path));
+            }
+            if (glbScenePromises.has(path)) {
+                return glbScenePromises.get(path);
+            }
+
+            const loader = new GLTFLoader();
+            const promise = loader.loadAsync(path)
+                .then((gltf) => {
+                    const root = gltf.scene || gltf.scenes?.[0];
+                    if (!root) {
+                        throw new Error(`GLB has no scene root: ${path}`);
+                    }
+                    glbSceneCache.set(path, root);
+                    return root;
+                })
+                .finally(() => {
+                    glbScenePromises.delete(path);
+                });
+
+            glbScenePromises.set(path, promise);
+            return promise;
+        }
+
+        function preloadGlbAssets() {
+            const glbPaths = ['static/mesh/goose.glb', 'static/mesh/cat_and_seal.glb'];
+            glbPaths.forEach((path) => {
+                requestGlbRoot(path).catch((err) => {
+                    console.warn(`Preload failed for ${path}`, err);
+                });
+            });
+        }
+
+        function setupGlbMesh(path) {
+            setLoadingVisible(true);
+            requestGlbRoot(path).then((cachedRoot) => {
+                const root = cachedRoot.clone(true);
+
+                root.updateMatrixWorld(true);
+
+                let sourceMesh = null;
+                let maxFaceCount = -1;
+
+                root.traverse((child) => {
+                    if (!child.isMesh || !child.geometry) return;
+                    const geometry = child.geometry;
+                    const positionAttr = geometry.getAttribute('position');
+                    if (!positionAttr || positionAttr.count === 0) return;
+                    const faceCount = geometry.index ? Math.floor(geometry.index.count / 3) : Math.floor(positionAttr.count / 3);
+                    if (faceCount > maxFaceCount) {
+                        maxFaceCount = faceCount;
+                        sourceMesh = child;
+                    }
+                });
+
+                if (!sourceMesh || !sourceMesh.geometry) {
+                    setLoadingVisible(false);
+                    return;
+                }
+
+                const geometry = sourceMesh.geometry.clone();
+                geometry.applyMatrix4(sourceMesh.matrixWorld);
+                geometry.computeVertexNormals();
+                geometry.computeBoundingBox();
+                geometry.center();
+
+                let material = sourceMesh.material;
+                if (Array.isArray(material)) {
+                    material = material.map((mat) => mat && mat.clone ? mat.clone() : mat);
+                } else if (material && material.clone) {
+                    material = material.clone();
+                }
+
+                const preparedMesh = new THREE.Mesh(geometry, material);
+                preparedMesh.userData.useImportedMaterial = true;
+                finalizeMesh(preparedMesh);
+                setLoadingVisible(false);
+            }).catch((err) => {
+                console.error(`Failed to load GLB model: ${path}`);
+                if (err) console.error(err);
+                setLoadingVisible(false);
+            });
+        }
+
         function loadObject(type) {
             disposeCurrentMesh();
             if (type === 'bunny') {
                 setupBunny();
+                return;
+            }
+            if (type === 'goose') {
+                setupGlbMesh('static/mesh/goose.glb');
+                return;
+            }
+            if (type === 'catAndSeal') {
+                setupGlbMesh('static/mesh/cat_and_seal.glb');
                 return;
             }
             const primitive = createPrimitiveMesh(type);
@@ -3055,7 +3254,7 @@
                             const radiusVal = (args && args.lightstage && typeof args.lightstage.radius !== 'undefined') ? args.lightstage.radius : '-';
                             const shapeVal = (args && args.lightstage && typeof args.lightstage.shape !== 'undefined') ? args.lightstage.shape : '-';
                             const patternVal = (args && args.lightstage && args.lightstage.patterns && typeof args.lightstage.patterns.active !== 'undefined') ? args.lightstage.patterns.active : '-';
-                            layoutPreviewStats.textContent = `Boards: ${boardCount}\nDensity: ${density}\nRadius: ${radiusVal}\nShape: ${shapeVal}\nPattern: ${patternVal}`;
+                            layoutPreviewStats.textContent = `Boards: ${boardCount}\nDensity: ${density}\nRadius: ${radiusVal}\nShape: ${shapeVal}\nPattern: ${patternVal}\nVertices: ${objectMeshStats.vertices}\nFaces: ${objectMeshStats.faces}`;
                             layoutPreviewStats.style.left = `${layoutX - captionPad}px`;
                             layoutPreviewStats.style.top = `${layoutTop + layoutSize / 2}px`;
                             layoutPreviewStats.style.right = 'auto';
@@ -3830,6 +4029,9 @@
         const _warmupColor = new THREE.Color();
         let _warmupIntensity = -1;
         let _warmupLightboardVersion = -1;
+        let objectMeshStats = { vertices: 0, faces: 0 };
+        let glbSceneCache = new Map();
+        let glbScenePromises = new Map();
         let hdriCache = null;
         let hdriDirty = true;
         let hdriBoardColors = null;
@@ -3860,6 +4062,7 @@
                     type: 'bunny',
                     scale: 1,
                     material: {
+                        useImportedTextures: true,
                         preset: 'metal',
                         brdf: {
                             baseColor: 0xffffff,
@@ -3978,6 +4181,7 @@
             projects: {
                 show: false,
                 showTitle: true,
+                accessCode: '',
                 items: [
                     // Research on Light Transport and Rendering
                     {
@@ -4118,6 +4322,7 @@
         if (infoDiv) infoDiv.style.display = args.projects.showTitle ? 'block' : 'none';
         setupStats();
         setupLightStage();
+        preloadGlbAssets();
         loadObject(args.lightstage.object.type);
         setupRayCaster();
         setupIlluminationPreview();
