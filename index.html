@@ -131,7 +131,6 @@
         import Stats from 'three/addons/libs/stats.module.js';
         import GUI from 'lil-gui';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import WebGPU from 'three/addons/capabilities/WebGPU.js';
         import WebGL from 'three/addons/capabilities/WebGL.js';
@@ -1314,7 +1313,7 @@
         }
 
         function getObjectBaseScale(type) {
-            if (type === 'bunny') return 0.01;
+            if (type === 'bunny') return 3.0;
             if (type === 'goose' || type === 'catAndSeal') return 0.5;
             return 0.25;
         }
@@ -2357,22 +2356,7 @@
         }
 
         function setupBunny() {
-            // Load bunny
-            const loader = new FBXLoader();
-            setLoadingVisible(true);
-            loader.load( 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/fbx/stanford-bunny.fbx', object => {
-
-                const bunny = object.children[ 0 ];
-                const geometry = bunny.geometry;
-                geometry.translate( 0, 0.5 / 0.0075, 0 );
-                geometry.scale( 0.1, 0.1, 0.1 );
-                bunny.scale.setScalar( 0.0075 );
-                finalizeMesh(bunny);
-                setLoadingVisible(false);
-
-            }, undefined, () => {
-                setLoadingVisible(false);
-            } );
+            setupGlbMesh('static/mesh/stanford_bunny.glb');
         }
 
         function requestGlbRoot(path) {
@@ -2402,9 +2386,27 @@
         }
 
         function preloadGlbAssets() {
-            const glbPaths = ['static/mesh/goose.glb', 'static/mesh/cat_and_seal.glb'];
+            const glbPaths = ['static/mesh/goose.glb', 'static/mesh/cat_and_seal.glb', 'static/mesh/stanford_bunny.glb'];
             glbPaths.forEach((path) => {
-                requestGlbRoot(path).catch((err) => {
+                requestGlbRoot(path).then((root) => {
+                    // Pre-upload all textures to the GPU to avoid decode stalls on first render
+                    root.traverse((child) => {
+                        if (!child.isMesh || !child.material) return;
+                        const mats = Array.isArray(child.material) ? child.material : [child.material];
+                        mats.forEach((mat) => {
+                            const texProps = [
+                                'map', 'normalMap', 'roughnessMap', 'metalnessMap',
+                                'aoMap', 'emissiveMap', 'envMap', 'lightMap',
+                                'alphaMap', 'specularMap', 'displacementMap',
+                            ];
+                            texProps.forEach((prop) => {
+                                if (mat[prop] && mat[prop].isTexture) {
+                                    renderer.initTexture(mat[prop]);
+                                }
+                            });
+                        });
+                    });
+                }).catch((err) => {
                     console.warn(`Preload failed for ${path}`, err);
                 });
             });
@@ -2461,20 +2463,35 @@
             });
         }
 
+        function applyMetalPreset() {
+            args.lightstage.object.material.useImportedTextures = false;
+            const metalPreset = getMaterialPresetValues('metal');
+            Object.assign(args.lightstage.object.material.brdf, metalPreset);
+            args.lightstage.object.material.preset = 'metal';
+        }
+
+        function applyImportedTexturePreset() {
+            args.lightstage.object.material.useImportedTextures = true;
+        }
+
         function loadObject(type) {
             disposeCurrentMesh();
             if (type === 'bunny') {
+                applyMetalPreset();
                 setupBunny();
                 return;
             }
             if (type === 'goose') {
+                applyImportedTexturePreset();
                 setupGlbMesh('static/mesh/goose.glb');
                 return;
             }
             if (type === 'catAndSeal') {
+                applyImportedTexturePreset();
                 setupGlbMesh('static/mesh/cat_and_seal.glb');
                 return;
             }
+            applyMetalPreset();
             const primitive = createPrimitiveMesh(type);
             finalizeMesh(primitive);
             setLoadingVisible(false);
@@ -4062,7 +4079,7 @@
                     type: 'bunny',
                     scale: 1,
                     material: {
-                        useImportedTextures: true,
+                        useImportedTextures: false,
                         preset: 'metal',
                         brdf: {
                             baseColor: 0xffffff,
