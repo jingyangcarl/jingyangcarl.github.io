@@ -295,8 +295,7 @@
             equirectCaptionHdri.style.lineHeight = '14px';
             equirectCaptionHdri.style.pointerEvents = 'none';
             equirectCaptionHdri.style.zIndex = '998';
-            equirectCaptionHdri.style.whiteSpace = 'normal';
-            equirectCaptionHdri.style.textAlign = 'right';
+            equirectCaptionHdri.style.whiteSpace = 'nowrap';
             equirectCaptionHdri.style.transform = 'translate(-100%, -100%)';
             equirectCaptionHdri.style.display = 'none';
             document.body.appendChild(equirectCaptionHdri);
@@ -310,8 +309,7 @@
             equirectCaptionOlat.style.lineHeight = '14px';
             equirectCaptionOlat.style.pointerEvents = 'none';
             equirectCaptionOlat.style.zIndex = '998';
-            equirectCaptionOlat.style.whiteSpace = 'normal';
-            equirectCaptionOlat.style.textAlign = 'right';
+            equirectCaptionOlat.style.whiteSpace = 'nowrap';
             equirectCaptionOlat.style.transform = 'translate(-100%, -100%)';
             equirectCaptionOlat.style.display = 'none';
             document.body.appendChild(equirectCaptionOlat);
@@ -325,8 +323,7 @@
             greyBallCaption.style.lineHeight = '14px';
             greyBallCaption.style.pointerEvents = 'none';
             greyBallCaption.style.zIndex = '998';
-            greyBallCaption.style.whiteSpace = 'normal';
-            greyBallCaption.style.textAlign = 'right';
+            greyBallCaption.style.whiteSpace = 'nowrap';
             greyBallCaption.style.transform = 'translate(-100%, -100%)';
             greyBallCaption.style.display = 'none';
             document.body.appendChild(greyBallCaption);
@@ -340,8 +337,7 @@
             chromeBallCaption.style.lineHeight = '14px';
             chromeBallCaption.style.pointerEvents = 'none';
             chromeBallCaption.style.zIndex = '998';
-            chromeBallCaption.style.whiteSpace = 'normal';
-            chromeBallCaption.style.textAlign = 'right';
+            chromeBallCaption.style.whiteSpace = 'nowrap';
             chromeBallCaption.style.transform = 'translate(-100%, -100%)';
             chromeBallCaption.style.display = 'none';
             document.body.appendChild(chromeBallCaption);
@@ -355,8 +351,7 @@
             illuminationCaption.style.lineHeight = '14px';
             illuminationCaption.style.pointerEvents = 'none';
             illuminationCaption.style.zIndex = '998';
-            illuminationCaption.style.whiteSpace = 'normal';
-            illuminationCaption.style.textAlign = 'right';
+            illuminationCaption.style.whiteSpace = 'nowrap';
             illuminationCaption.style.transform = 'translate(-100%, -100%)';
             illuminationCaption.style.display = 'none';
             document.body.appendChild(illuminationCaption);
@@ -370,8 +365,7 @@
             layoutPreviewCaption.style.lineHeight = '14px';
             layoutPreviewCaption.style.pointerEvents = 'none';
             layoutPreviewCaption.style.zIndex = '998';
-            layoutPreviewCaption.style.whiteSpace = 'normal';
-            layoutPreviewCaption.style.textAlign = 'right';
+            layoutPreviewCaption.style.whiteSpace = 'nowrap';
             layoutPreviewCaption.style.transform = 'translate(-100%, -100%)';
             layoutPreviewCaption.style.display = 'none';
             document.body.appendChild(layoutPreviewCaption);
@@ -3223,6 +3217,8 @@
                     equirectCaptionHdri.style.left = `${equirectX + clampedWidth - captionPad}px`;
                     equirectCaptionHdri.style.top = `${equirectTop + clampedHeight - captionPad}px`;
                     equirectCaptionHdri.style.maxWidth = `${clampedWidth - captionPad * 2}px`;
+                    equirectCaptionHdri.style.overflow = 'hidden';
+                    equirectCaptionHdri.style.textOverflow = 'ellipsis';
                     equirectCaptionHdri.style.display = showPatternPreview ? 'block' : 'none';
                 }
                 if (equirectCaptionOlat) {
@@ -3230,6 +3226,8 @@
                     equirectCaptionOlat.style.left = `${equirectX2 + clampedWidth - captionPad}px`;
                     equirectCaptionOlat.style.top = `${equirectTop2 + clampedHeight - captionPad}px`;
                     equirectCaptionOlat.style.maxWidth = `${clampedWidth - captionPad * 2}px`;
+                    equirectCaptionOlat.style.overflow = 'hidden';
+                    equirectCaptionOlat.style.textOverflow = 'ellipsis';
                     equirectCaptionOlat.style.display = showPatternPreview ? 'block' : 'none';
                 }
                 const miniDiameter = Math.max(1, Math.min(clampedHeight, clampedWidth));
@@ -3246,6 +3244,8 @@
                     greyBallCaption.style.left = `${greyCircleX + miniDiameter - captionPad}px`;
                     greyBallCaption.style.top = `${miniCircleTop + miniDiameter - captionPad}px`;
                     greyBallCaption.style.maxWidth = `${miniDiameter - captionPad * 2}px`;
+                    greyBallCaption.style.overflow = 'hidden';
+                    greyBallCaption.style.textOverflow = 'ellipsis';
                     greyBallCaption.style.display = 'block';
                 }
                 if (chromeBallCaption) {
@@ -3253,6 +3253,8 @@
                     chromeBallCaption.style.left = `${chromeCircleX + miniDiameter - captionPad}px`;
                     chromeBallCaption.style.top = `${miniCircleTop + miniDiameter - captionPad}px`;
                     chromeBallCaption.style.maxWidth = `${miniDiameter - captionPad * 2}px`;
+                    chromeBallCaption.style.overflow = 'hidden';
+                    chromeBallCaption.style.textOverflow = 'ellipsis';
                     chromeBallCaption.style.display = 'block';
                 }
                 if (illuminationCaption) {
@@ -3260,6 +3262,8 @@
                     illuminationCaption.style.left = `${chromeCircleX + miniDiameter - captionPad}px`;
                     illuminationCaption.style.top = `${miniCircleTop - captionPad}px`;
                     illuminationCaption.style.maxWidth = `${totalCircleWidth - captionPad * 2}px`;
+                    illuminationCaption.style.overflow = 'hidden';
+                    illuminationCaption.style.textOverflow = 'ellipsis';
                     illuminationCaption.style.display = 'block';
                 }
 
@@ -3287,6 +3291,8 @@
                             layoutPreviewCaption.style.bottom = 'auto';
                             layoutPreviewCaption.style.transform = 'translate(-100%, 0)';
                             layoutPreviewCaption.style.maxWidth = `${layoutSize - captionPad * 2}px`;
+                            layoutPreviewCaption.style.overflow = 'hidden';
+                            layoutPreviewCaption.style.textOverflow = 'ellipsis';
                             layoutPreviewCaption.style.display = 'block';
                         }
 
