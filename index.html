@@ -680,8 +680,8 @@
 
             let gui_ls_object_material = gui_ls_object.addFolder('Material');
             gui_ls_object_material.open();
-            gui_ls_object_material.add(args.lightstage.object.material, 'useImportedTextures').name('Use Imported Textures').onChange(() => applyObjectMaterial()).listen();
             gui_ls_object_material.add( args.lightstage.object.material, 'preset', {
+                Textures: 'textures',
                 Matte: 'matte',
                 Metal: 'metal',
                 Rubber: 'rubber',
@@ -689,8 +689,13 @@
                 Plastic: 'plastic',
                 Jade: 'jade'
             }).name('Preset').onChange(v => {
-                const preset = getMaterialPresetValues(v);
-                Object.assign(args.lightstage.object.material.brdf, preset);
+                if (v === 'textures') {
+                    args.lightstage.object.material.useImportedTextures = true;
+                } else {
+                    args.lightstage.object.material.useImportedTextures = false;
+                    const preset = getMaterialPresetValues(v);
+                    Object.assign(args.lightstage.object.material.brdf, preset);
+                }
                 applyObjectMaterial();
             }).listen();
 
@@ -1597,6 +1602,9 @@
         function applyObjectMaterial() {
             if (!mesh || !args || !args.lightstage || !args.lightstage.object || !args.lightstage.object.material) return;
             if (mesh.userData && mesh.userData.useImportedMaterial && args.lightstage.object.material.useImportedTextures) {
+                if (mesh.userData.importedMaterials !== undefined) {
+                    mesh.material = mesh.userData.importedMaterials;
+                }
                 brdfPreviewDirty = true;
                 return;
             }
@@ -2585,6 +2593,7 @@
 
                 const preparedMesh = new THREE.Mesh(geometry, material);
                 preparedMesh.userData.useImportedMaterial = true;
+                preparedMesh.userData.importedMaterials = Array.isArray(material) ? material.slice() : material;
                 finalizeMesh(preparedMesh);
                 setLoadingVisible(false);
             }).catch((err) => {
@@ -2603,6 +2612,7 @@
 
         function applyImportedTexturePreset() {
             args.lightstage.object.material.useImportedTextures = true;
+            args.lightstage.object.material.preset = 'textures';
         }
 
         function loadObject(type) {
