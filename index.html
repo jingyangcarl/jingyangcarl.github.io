@@ -1237,6 +1237,7 @@
 
             hdriDirty = true;
             hdriAssignmentDirty = true;
+            hdriBaseColorsDirty = true;
             rebuildLightboardRefs();
 
         }
@@ -2092,6 +2093,7 @@
                     toCacheEntry(imgVista, false, 'custom1');
                     hdriDirty = true;
                     hdriPreviewDirty = true;
+                    hdriBaseColorsDirty = true;
                 },
                 () => {
                     console.warn('Failed to load default custom1 HDRI image: static/img/vista.jpg (fallback to static/img/sample.png)');
@@ -2100,6 +2102,7 @@
                             toCacheEntry(imgFallback, false, 'custom1');
                             hdriDirty = true;
                             hdriPreviewDirty = true;
+                            hdriBaseColorsDirty = true;
                         },
                         () => {
                             console.warn('Failed to load fallback custom1 HDRI image: static/img/sample.png');
@@ -2114,6 +2117,7 @@
                     toCacheEntry(imgSample, true, 'custom2');
                     hdriDirty = true;
                     hdriPreviewDirty = true;
+                    hdriBaseColorsDirty = true;
                 },
                 () => {
                     console.warn('Failed to load default custom2 HDRI image: static/img/sample.png');
@@ -2153,6 +2157,34 @@
             hdriAssignmentDirty = false;
         }
 
+        function buildHdriBaseColors(width, height) {
+            if (!lightboards || lightboards.children.length === 0) return;
+            if (!hdriCache || !hdriAssignmentMap || hdriAssignmentWidth !== width || hdriAssignmentHeight !== height) return;
+            const n = lightboards.children.length;
+            const sums = new Float32Array(n * 3);
+            const counts = new Uint32Array(n);
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const bestIdx = hdriAssignmentMap[y * width + x];
+                    const colorIdx = (y * width + x) * 3;
+                    sums[bestIdx * 3]     += hdriCache.colors[colorIdx];
+                    sums[bestIdx * 3 + 1] += hdriCache.colors[colorIdx + 1];
+                    sums[bestIdx * 3 + 2] += hdriCache.colors[colorIdx + 2];
+                    counts[bestIdx] += 1;
+                }
+            }
+            if (!hdriBaseColors || hdriBaseColors.length !== n * 3) {
+                hdriBaseColors = new Float32Array(n * 3);
+            }
+            for (let i = 0; i < n; i++) {
+                const count = counts[i] || 1;
+                hdriBaseColors[i * 3]     = sums[i * 3]     / count;
+                hdriBaseColors[i * 3 + 1] = sums[i * 3 + 1] / count;
+                hdriBaseColors[i * 3 + 2] = sums[i * 3 + 2] / count;
+            }
+            hdriBaseColorsDirty = false;
+        }
+
         function applyHDRIPattern() {
             if (!lightboards || lightboards.children.length === 0) return;
             const off = 0.1;
@@ -2181,6 +2213,7 @@
                 else hdriCache = generateGradientHDRI(width, height);
                 if (!isCustom || !customHdriCache[pattern]) hdriCache.pattern = pattern;
                 hdriPreviewDirty = true;
+                hdriBaseColorsDirty = true;
             }
 
             const n = lightboards.children.length;
@@ -2194,7 +2227,7 @@
             const hShift = Math.round((patterns.hdriHorizontalRotation || 0) / 360 * width);
             const vShift = Math.round((patterns.hdriVerticalRotation || 0) / 180 * height);
             for (let y = 0; y < height; y++) {
-                const ys = Math.max(0, Math.min(height - 1, y + vShift));
+                const ys = ((y + vShift) % height + height) % height;
                 for (let x = 0; x < width; x++) {
                     const xs = ((x + hShift) % width + width) % width;
                     const bestIdx = hdriAssignmentMap[ys * width + xs];
@@ -3757,8 +3790,10 @@
         function updateOlatPreviewCanvas() {
             if (!olatPreviewCanvas || !olatPreviewCtx || !olatPreviewOffscreen || !olatPreviewOffCtx) return;
             if (!lightboards || lightboards.children.length === 0) return;
-            const width = args.lightstage.patterns.hdriResolution || 128;
-            const height = Math.floor(width / 2);
+            const _olatPattern = args.lightstage.patterns.hdriPattern || 'gradient';
+            const _olatIsCustom = _olatPattern === 'custom1' || _olatPattern === 'custom2';
+            const width = _olatIsCustom ? 512 : (args.lightstage.patterns.hdriResolution || 128);
+            const height = _olatIsCustom ? 256 : Math.floor(width / 2);
             if (width <= 0 || height <= 0) return;
             olatPreviewOffscreen.width = width;
             olatPreviewOffscreen.height = height;
@@ -3781,37 +3816,48 @@
                 ? Math.max(0.0, patterns.hdriLightIntensity) * hdriIntensity
                 : hdriIntensity;
 
-            const lightDirs = lightboards.children.map(lb => lb.position.clone().normalize());
+            const hShift = Math.round((patterns.hdriHorizontalRotation || 0) / 360 * width);
+            const vShift = Math.round((patterns.hdriVerticalRotation || 0) / 180 * height);
+            const useMap = hdriAssignmentMap && hdriAssignmentWidth === width && hdriAssignmentHeight === height;
+            const lightDirs = useMap ? null : lightboards.children.map(lb => lb.position.clone().normalize());
+            const contrast = Math.max(0.01, patterns.hdriContrast || 1.0);
+
+            if (isHdriPhase && useMap && hdriBaseColorsDirty) {
+                buildHdriBaseColors(width, height);
+            }
 
             for (let y = 0; y < height; y++) {
-                const v = (y + 0.5) / height;
-                let theta = v * Math.PI;
-                const sinTheta = Math.sin(theta);
-                const cosTheta = Math.cos(theta);
+                // inverse rotation to match HDRI preview (which also uses inverse rotation for sampling)
+                const srcY = ((y - vShift) % height + height) % height;
                 for (let x = 0; x < width; x++) {
-                    const u = (x + 0.5) / width;
-                    let phi = u * Math.PI * 2;
-                    
-                    const dirX = sinTheta * Math.cos(phi);
-                    const dirY = cosTheta;
-                    const dirZ = -sinTheta * Math.sin(phi);
-
-                    let bestIdx = 0;
-                    let bestDot = -1e9;
-                    for (let i = 0; i < lightDirs.length; i++) {
-                        const d = lightDirs[i];
-                        const dot = d.x * dirX + d.y * dirY + d.z * dirZ;
-                        if (dot > bestDot) {
-                            bestDot = dot;
-                            bestIdx = i;
+                    const srcX = ((x - hShift) % width + width) % width;
+                    let bestIdx;
+                    if (useMap) {
+                        bestIdx = hdriAssignmentMap[srcY * width + srcX];
+                    } else {
+                        const hRotRad = (patterns.hdriHorizontalRotation || 0) * Math.PI / 180;
+                        const vRotRad = (patterns.hdriVerticalRotation || 0) * Math.PI / 180;
+                        const v = (y + 0.5) / height;
+                        let theta = ((v * Math.PI - vRotRad) % Math.PI + Math.PI) % Math.PI;
+                        const u = (x + 0.5) / width;
+                        let phi = ((u * Math.PI * 2 - hRotRad) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+                        const dirX = Math.sin(theta) * Math.cos(phi);
+                        const dirY = Math.cos(theta);
+                        const dirZ = -Math.sin(theta) * Math.sin(phi);
+                        bestIdx = 0;
+                        let bestDot = -1e9;
+                        for (let i = 0; i < lightDirs.length; i++) {
+                            const d = lightDirs[i];
+                            const dot = d.x * dirX + d.y * dirY + d.z * dirZ;
+                            if (dot > bestDot) { bestDot = dot; bestIdx = i; }
                         }
                     }
 
                     let r = off, g = off, b = off;
-                    if (isHdriPhase && hdriBoardColors && hdriBoardColors.length === lightDirs.length * 3) {
-                        r = Math.min(1, hdriBoardColors[bestIdx * 3] * hdriLightIntensity);
-                        g = Math.min(1, hdriBoardColors[bestIdx * 3 + 1] * hdriLightIntensity);
-                        b = Math.min(1, hdriBoardColors[bestIdx * 3 + 2] * hdriLightIntensity);
+                    if (isHdriPhase && hdriBaseColors && hdriBaseColors.length > bestIdx * 3 + 2) {
+                        r = Math.min(1, Math.max(0, Math.pow(hdriBaseColors[bestIdx * 3],     1 / contrast)) * hdriLightIntensity);
+                        g = Math.min(1, Math.max(0, Math.pow(hdriBaseColors[bestIdx * 3 + 1], 1 / contrast)) * hdriLightIntensity);
+                        b = Math.min(1, Math.max(0, Math.pow(hdriBaseColors[bestIdx * 3 + 2], 1 / contrast)) * hdriLightIntensity);
                     } else if (mode === 'white') {
                         r = g = b = 1.0 * olatIntensity;
                     } else if (mode === 'olat' && bestIdx === boardIndex) {
@@ -4099,6 +4145,8 @@
         let hdriAssignmentHeight = 0;
         let hdriAssignmentDirty = true;
         let hdriBoardColors = null;
+        let hdriBaseColors = null;
+        let hdriBaseColorsDirty = true;
         let hdriPreviewDirty = true;
         let hdriEnvMapTexture = null;
         let customHdriCache = { custom1: null, custom2: null };
