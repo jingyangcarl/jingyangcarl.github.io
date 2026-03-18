@@ -293,7 +293,8 @@
             equirectCaptionHdri.style.color = '#ffffff';
             equirectCaptionHdri.style.fontSize = '11px';
             equirectCaptionHdri.style.lineHeight = '14px';
-            equirectCaptionHdri.style.pointerEvents = 'none';
+            equirectCaptionHdri.style.pointerEvents = 'auto';
+            equirectCaptionHdri.style.cursor = 'default';
             equirectCaptionHdri.style.zIndex = '998';
             equirectCaptionHdri.style.whiteSpace = 'nowrap';
             equirectCaptionHdri.style.transform = 'translate(-100%, -100%)';
@@ -307,7 +308,8 @@
             equirectCaptionOlat.style.color = '#ffffff';
             equirectCaptionOlat.style.fontSize = '11px';
             equirectCaptionOlat.style.lineHeight = '14px';
-            equirectCaptionOlat.style.pointerEvents = 'none';
+            equirectCaptionOlat.style.pointerEvents = 'auto';
+            equirectCaptionOlat.style.cursor = 'default';
             equirectCaptionOlat.style.zIndex = '998';
             equirectCaptionOlat.style.whiteSpace = 'nowrap';
             equirectCaptionOlat.style.transform = 'translate(-100%, -100%)';
@@ -321,7 +323,8 @@
             greyBallCaption.style.color = '#ffffff';
             greyBallCaption.style.fontSize = '11px';
             greyBallCaption.style.lineHeight = '14px';
-            greyBallCaption.style.pointerEvents = 'none';
+            greyBallCaption.style.pointerEvents = 'auto';
+            greyBallCaption.style.cursor = 'default';
             greyBallCaption.style.zIndex = '998';
             greyBallCaption.style.whiteSpace = 'nowrap';
             greyBallCaption.style.transform = 'translate(-100%, -100%)';
@@ -335,7 +338,8 @@
             chromeBallCaption.style.color = '#ffffff';
             chromeBallCaption.style.fontSize = '11px';
             chromeBallCaption.style.lineHeight = '14px';
-            chromeBallCaption.style.pointerEvents = 'none';
+            chromeBallCaption.style.pointerEvents = 'auto';
+            chromeBallCaption.style.cursor = 'default';
             chromeBallCaption.style.zIndex = '998';
             chromeBallCaption.style.whiteSpace = 'nowrap';
             chromeBallCaption.style.transform = 'translate(-100%, -100%)';
@@ -349,7 +353,8 @@
             illuminationCaption.style.color = '#ffffff';
             illuminationCaption.style.fontSize = '11px';
             illuminationCaption.style.lineHeight = '14px';
-            illuminationCaption.style.pointerEvents = 'none';
+            illuminationCaption.style.pointerEvents = 'auto';
+            illuminationCaption.style.cursor = 'default';
             illuminationCaption.style.zIndex = '998';
             illuminationCaption.style.whiteSpace = 'nowrap';
             illuminationCaption.style.transform = 'translate(-100%, -100%)';
@@ -363,7 +368,8 @@
             layoutPreviewCaption.style.color = '#ffffff';
             layoutPreviewCaption.style.fontSize = '11px';
             layoutPreviewCaption.style.lineHeight = '14px';
-            layoutPreviewCaption.style.pointerEvents = 'none';
+            layoutPreviewCaption.style.pointerEvents = 'auto';
+            layoutPreviewCaption.style.cursor = 'default';
             layoutPreviewCaption.style.zIndex = '998';
             layoutPreviewCaption.style.whiteSpace = 'nowrap';
             layoutPreviewCaption.style.transform = 'translate(-100%, -100%)';
@@ -3214,6 +3220,7 @@
                     } else {
                         equirectCaptionHdri.textContent = 'HDRI illumination (equirectangular)';
                     }
+                    equirectCaptionHdri.title = equirectCaptionHdri.textContent;
                     equirectCaptionHdri.style.left = `${equirectX + clampedWidth - captionPad}px`;
                     equirectCaptionHdri.style.top = `${equirectTop + clampedHeight - captionPad}px`;
                     equirectCaptionHdri.style.maxWidth = `${clampedWidth - captionPad * 2}px`;
@@ -3223,6 +3230,7 @@
                 }
                 if (equirectCaptionOlat) {
                     equirectCaptionOlat.textContent = 'Light sources (equirectangular)';
+                    equirectCaptionOlat.title = equirectCaptionOlat.textContent;
                     equirectCaptionOlat.style.left = `${equirectX2 + clampedWidth - captionPad}px`;
                     equirectCaptionOlat.style.top = `${equirectTop2 + clampedHeight - captionPad}px`;
                     equirectCaptionOlat.style.maxWidth = `${clampedWidth - captionPad * 2}px`;
@@ -3241,6 +3249,7 @@
 
                 if (greyBallCaption) {
                     greyBallCaption.textContent = 'Gray ball';
+                    greyBallCaption.title = greyBallCaption.textContent;
                     greyBallCaption.style.left = `${greyCircleX + miniDiameter - captionPad}px`;
                     greyBallCaption.style.top = `${miniCircleTop + miniDiameter - captionPad}px`;
                     greyBallCaption.style.maxWidth = `${miniDiameter - captionPad * 2}px`;
@@ -3250,6 +3259,7 @@
                 }
                 if (chromeBallCaption) {
                     chromeBallCaption.textContent = 'Chrome ball';
+                    chromeBallCaption.title = chromeBallCaption.textContent;
                     chromeBallCaption.style.left = `${chromeCircleX + miniDiameter - captionPad}px`;
                     chromeBallCaption.style.top = `${miniCircleTop + miniDiameter - captionPad}px`;
                     chromeBallCaption.style.maxWidth = `${miniDiameter - captionPad * 2}px`;
@@ -3259,6 +3269,7 @@
                 }
                 if (illuminationCaption) {
                     illuminationCaption.textContent = `Illumination preview — ${cameraLabel}`;
+                    illuminationCaption.title = illuminationCaption.textContent;
                     illuminationCaption.style.left = `${chromeCircleX + miniDiameter - captionPad}px`;
                     illuminationCaption.style.top = `${miniCircleTop - captionPad}px`;
                     illuminationCaption.style.maxWidth = `${totalCircleWidth - captionPad * 2}px`;
@@ -3290,6 +3301,7 @@
                             layoutPreviewCaption.style.right = 'auto';
                             layoutPreviewCaption.style.bottom = 'auto';
                             layoutPreviewCaption.style.transform = 'translate(-100%, 0)';
+                            layoutPreviewCaption.title = layoutPreviewCaption.textContent;
                             layoutPreviewCaption.style.maxWidth = `${layoutSize - captionPad * 2}px`;
                             layoutPreviewCaption.style.overflow = 'hidden';
                             layoutPreviewCaption.style.textOverflow = 'ellipsis';
