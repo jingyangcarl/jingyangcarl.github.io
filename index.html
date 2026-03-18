@@ -378,14 +378,14 @@
 
             layoutPreviewStats = document.createElement('div');
             layoutPreviewStats.id = 'layoutPreviewStats';
-            layoutPreviewStats.textContent = 'Boards: 0';
             layoutPreviewStats.style.position = 'absolute';
             layoutPreviewStats.style.color = '#ffffff';
             layoutPreviewStats.style.fontSize = '11px';
             layoutPreviewStats.style.lineHeight = '14px';
             layoutPreviewStats.style.pointerEvents = 'none';
             layoutPreviewStats.style.zIndex = '998';
-            layoutPreviewStats.style.whiteSpace = 'pre';
+            layoutPreviewStats.style.whiteSpace = 'normal';
+            layoutPreviewStats.style.textAlign = 'right';
             layoutPreviewStats.style.transform = 'translate(-100%, -50%)';
             layoutPreviewStats.style.display = 'none';
             document.body.appendChild(layoutPreviewStats);
@@ -407,6 +407,55 @@
             layoutPreviewCanvas.style.background = 'rgba(0, 0, 0, 0.35)';
             layoutPreviewCanvas.style.zIndex = '996';
             document.body.appendChild(layoutPreviewCanvas);
+
+            // mesh wireframe preview (left of Light sources equirect)
+            meshPreviewCaption = document.createElement('div');
+            meshPreviewCaption.id = 'meshPreviewCaption';
+            meshPreviewCaption.textContent = 'Mesh wireframe';
+            meshPreviewCaption.style.position = 'absolute';
+            meshPreviewCaption.style.color = '#ffffff';
+            meshPreviewCaption.style.fontSize = '11px';
+            meshPreviewCaption.style.lineHeight = '14px';
+            meshPreviewCaption.style.pointerEvents = 'auto';
+            meshPreviewCaption.style.cursor = 'default';
+            meshPreviewCaption.style.zIndex = '998';
+            meshPreviewCaption.style.whiteSpace = 'nowrap';
+            meshPreviewCaption.style.display = 'none';
+            document.body.appendChild(meshPreviewCaption);
+
+            meshPreviewStats = document.createElement('div');
+            meshPreviewStats.id = 'meshPreviewStats';
+            meshPreviewStats.style.position = 'absolute';
+            meshPreviewStats.style.color = '#ffffff';
+            meshPreviewStats.style.fontSize = '11px';
+            meshPreviewStats.style.lineHeight = '14px';
+            meshPreviewStats.style.pointerEvents = 'none';
+            meshPreviewStats.style.zIndex = '998';
+            meshPreviewStats.style.whiteSpace = 'normal';
+            meshPreviewStats.style.textAlign = 'right';
+            meshPreviewStats.style.transform = 'translate(-100%, -50%)';
+            meshPreviewStats.style.display = 'none';
+            document.body.appendChild(meshPreviewStats);
+
+            meshPreviewRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            meshPreviewRenderer.setClearColor(0x000000, 0);
+            meshPreviewRenderer.setPixelRatio(window.devicePixelRatio || 1);
+            meshPreviewRenderer.setSize(64, 64);
+            meshPreviewCanvas = meshPreviewRenderer.domElement;
+            meshPreviewCanvas.id = 'meshPreview';
+            meshPreviewCanvas.style.position = 'absolute';
+            meshPreviewCanvas.style.left = '0';
+            meshPreviewCanvas.style.top = '0';
+            meshPreviewCanvas.style.pointerEvents = 'none';
+            meshPreviewCanvas.style.display = 'none';
+            meshPreviewCanvas.style.borderRadius = '4px';
+            meshPreviewCanvas.style.border = '1px solid rgba(255, 255, 255, 0.35)';
+            meshPreviewCanvas.style.background = 'rgba(0, 0, 0, 0.35)';
+            meshPreviewCanvas.style.zIndex = '996';
+            document.body.appendChild(meshPreviewCanvas);
+
+            meshPreviewScene = new THREE.Scene();
+            meshPreviewCamera = new THREE.PerspectiveCamera(30, 1, 0.01, 1000);
 
             // illumination previews (separate renderers for circular masks)
             illuminationPreviewGreyRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -1258,6 +1307,33 @@
             layoutPreviewScene.add(layoutPreviewRig);
         }
 
+        function updateMeshPreviewRig(targetMesh) {
+            if (!meshPreviewScene) return;
+            if (meshPreviewRig) {
+                meshPreviewScene.remove(meshPreviewRig);
+                meshPreviewRig.geometry.dispose();
+                meshPreviewRig.material.dispose();
+                meshPreviewRig = null;
+            }
+            if (!targetMesh || !targetMesh.geometry) return;
+            const edgesGeo = new THREE.WireframeGeometry(targetMesh.geometry);
+            const edgesMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 });
+            meshPreviewRig = new THREE.LineSegments(edgesGeo, edgesMat);
+            // center and normalize to unit scale
+            const bbox = new THREE.Box3().setFromObject(meshPreviewRig);
+            const center = new THREE.Vector3();
+            bbox.getCenter(center);
+            meshPreviewRig.position.sub(center);
+            const size = new THREE.Vector3();
+            bbox.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            meshPreviewRig.scale.setScalar(1 / maxDim);
+            meshPreviewScene.add(meshPreviewRig);
+            // position camera to see the unit-scale mesh
+            meshPreviewCamera.position.set(0, 0, 1.2);
+            meshPreviewCamera.lookAt(0, 0, 0);
+        }
+
         function disposeCurrentMesh() {
             if (helper) {
                 scene.remove(helper);
@@ -1285,6 +1361,7 @@
             bvh = null;
             objectMeshStats.vertices = 0;
             objectMeshStats.faces = 0;
+            updateMeshPreviewRig(null);
         }
 
         function updateObjectMeshStats(targetMesh) {
@@ -1361,6 +1438,8 @@
             }
 
             setupBrdfPreview();
+            updateMeshPreviewRig(mesh);
+            meshPreviewRefDist = 0;
 
             applyObjectMaterial();
         }
@@ -3347,7 +3426,7 @@
                             const radiusVal = (args && args.lightstage && typeof args.lightstage.radius !== 'undefined') ? args.lightstage.radius : '-';
                             const shapeVal = (args && args.lightstage && typeof args.lightstage.shape !== 'undefined') ? args.lightstage.shape : '-';
                             const patternVal = (args && args.lightstage && args.lightstage.patterns && typeof args.lightstage.patterns.active !== 'undefined') ? args.lightstage.patterns.active : '-';
-                            layoutPreviewStats.textContent = `Boards: ${boardCount}\nDensity: ${density}\nRadius: ${radiusVal}\nShape: ${shapeVal}\nPattern: ${patternVal}\nVertices: ${objectMeshStats.vertices}\nFaces: ${objectMeshStats.faces}`;
+                            layoutPreviewStats.innerHTML = `<span style="font-weight:600;color:#aad4f5">Light stage</span><br>Boards: ${boardCount}<br>Density: ${density}<br>Radius: ${radiusVal}<br>Shape: ${shapeVal}<br>Pattern: ${patternVal}`;
                             layoutPreviewStats.style.left = `${layoutX - captionPad}px`;
                             layoutPreviewStats.style.top = `${layoutTop + layoutSize / 2}px`;
                             layoutPreviewStats.style.right = 'auto';
@@ -3369,6 +3448,78 @@
                         layoutPreviewCanvas.style.display = 'none';
                         if (layoutPreviewCaption) layoutPreviewCaption.style.display = 'none';
                         if (layoutPreviewStats) layoutPreviewStats.style.display = 'none';
+                    }
+                }
+
+                // mesh wireframe preview (left of Light sources equirect)
+                if (meshPreviewCanvas && meshPreviewRenderer && meshPreviewScene && meshPreviewCamera) {
+                    if (showPatternPreview && meshPreviewRig) {
+                        const meshSize = Math.max(60, Math.floor(clampedHeight * 0.75));
+                        const meshGap = 8;
+                        const meshX = Math.max(20, equirectX2 - meshSize - meshGap);
+                        const meshY = equirectY2 + Math.max(0, Math.floor((clampedHeight - meshSize) / 2));
+                        const meshTop = Math.max(0, window.innerHeight - (meshY + meshSize));
+
+                        // shared stats column right-edge (same as layout preview stats)
+                        const statsColX = meshX - captionPad;
+
+                        meshPreviewCanvas.style.display = 'block';
+                        meshPreviewCanvas.style.left = `${meshX}px`;
+                        meshPreviewCanvas.style.top = `${meshTop}px`;
+                        meshPreviewCanvas.style.width = `${meshSize}px`;
+                        meshPreviewCanvas.style.height = `${meshSize}px`;
+                        meshPreviewRenderer.setSize(meshSize, meshSize, false);
+
+                        if (meshPreviewCaption) {
+                            const captionOffset = 6;
+                            meshPreviewCaption.style.left = `${meshX + meshSize - captionPad}px`;
+                            meshPreviewCaption.style.top = `${meshTop + meshSize + captionOffset}px`;
+                            meshPreviewCaption.style.right = 'auto';
+                            meshPreviewCaption.style.bottom = 'auto';
+                            meshPreviewCaption.style.transform = 'translate(-100%, 0)';
+                            meshPreviewCaption.title = meshPreviewCaption.textContent;
+                            meshPreviewCaption.style.maxWidth = `${meshSize - captionPad * 2}px`;
+                            meshPreviewCaption.style.overflow = 'hidden';
+                            meshPreviewCaption.style.textOverflow = 'ellipsis';
+                            meshPreviewCaption.style.display = 'block';
+                        }
+
+                        if (meshPreviewStats) {
+                            const modelName = (args && args.lightstage && args.lightstage.object && args.lightstage.object.type) ? args.lightstage.object.type : '-';
+                            meshPreviewStats.innerHTML = `<span style="font-weight:600;color:#aad4f5">Mesh</span><br>Model: ${modelName}<br>Vertices: ${objectMeshStats.vertices}<br>Faces: ${objectMeshStats.faces}`;
+                            meshPreviewStats.style.left = `${statsColX}px`;
+                            meshPreviewStats.style.top = `${meshTop + meshSize / 2}px`;
+                            meshPreviewStats.style.right = 'auto';
+                            meshPreviewStats.style.bottom = 'auto';
+                            meshPreviewStats.style.transform = 'translate(-100%, -50%)';
+                            meshPreviewStats.style.display = 'block';
+                        }
+
+                        // also align layoutPreviewStats to same column
+                        if (layoutPreviewStats) {
+                            layoutPreviewStats.style.left = `${statsColX}px`;
+                        }
+
+                        // sync orientation + zoom with main camera
+                        meshPreviewCamera.fov = camera.fov;
+                        meshPreviewCamera.aspect = 1;
+                        if (controls) {
+                            const currentDist = camera.position.distanceTo(controls.target);
+                            if (meshPreviewRefDist === 0) meshPreviewRefDist = currentDist;
+                            const meshCamDist = 1.2 * (currentDist / meshPreviewRefDist);
+                            const meshCamDir = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
+                            meshPreviewCamera.position.copy(meshCamDir.multiplyScalar(meshCamDist));
+                        } else {
+                            const meshCamDir = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
+                            meshPreviewCamera.position.copy(meshCamDir.multiplyScalar(1.2));
+                        }
+                        meshPreviewCamera.quaternion.copy(camera.quaternion);
+                        meshPreviewCamera.updateProjectionMatrix();
+                        meshPreviewRenderer.render(meshPreviewScene, meshPreviewCamera);
+                    } else {
+                        meshPreviewCanvas.style.display = 'none';
+                        if (meshPreviewCaption) meshPreviewCaption.style.display = 'none';
+                        if (meshPreviewStats) meshPreviewStats.style.display = 'none';
                     }
                 }
 
@@ -3429,6 +3580,9 @@
                 if (layoutPreviewCanvas) layoutPreviewCanvas.style.display = 'none';
                 if (layoutPreviewCaption) layoutPreviewCaption.style.display = 'none';
                 if (layoutPreviewStats) layoutPreviewStats.style.display = 'none';
+                if (meshPreviewCanvas) meshPreviewCanvas.style.display = 'none';
+                if (meshPreviewCaption) meshPreviewCaption.style.display = 'none';
+                if (meshPreviewStats) meshPreviewStats.style.display = 'none';
             }
         }
 
@@ -4101,6 +4255,9 @@
         let illuminationLightsGrey = [], illuminationLightsChrome = [];
         let chromeBall, greyBall;
         let layoutPreviewRenderer, layoutPreviewScene, layoutPreviewCamera, layoutPreviewCanvas, layoutPreviewRig;
+        let meshPreviewRenderer, meshPreviewScene, meshPreviewCamera, meshPreviewCanvas, meshPreviewRig;
+        let meshPreviewCaption, meshPreviewStats;
+        let meshPreviewRefDist = 0;
         let illuminationPreviewGreyRenderer, illuminationPreviewGreyCanvas;
         let illuminationPreviewChromeRenderer, illuminationPreviewChromeCanvas;
         // multiple inset cameras and helpers
