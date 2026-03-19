@@ -2435,15 +2435,24 @@
                 : 1.0;
             const contrast = Math.max(0.01, patterns.hdriContrast || 1.0);
 
+            const hShift = Math.round((patterns.hdriHorizontalRotation || 0) / 360 * width);
+            const vShift = Math.round((patterns.hdriVerticalRotation || 0) / 180 * height);
+
             const data = new Uint8Array(width * height * 4);
-            for (let i = 0; i < width * height; i++) {
-                const r = Math.min(255, Math.floor(Math.pow(hdriCache.colors[i * 3] || 0, 1 / contrast) * intensity * 255));
-                const g = Math.min(255, Math.floor(Math.pow(hdriCache.colors[i * 3 + 1] || 0, 1 / contrast) * intensity * 255));
-                const b = Math.min(255, Math.floor(Math.pow(hdriCache.colors[i * 3 + 2] || 0, 1 / contrast) * intensity * 255));
-                data[i * 4] = r;
-                data[i * 4 + 1] = g;
-                data[i * 4 + 2] = b;
-                data[i * 4 + 3] = 255;
+            for (let y = 0; y < height; y++) {
+                // Flip vertically (DataTexture origin bottom-left) + inverse vShift to match HDRI preview
+                const srcY = ((height - 1 - y - vShift) % height + height) % height;
+                for (let x = 0; x < width; x++) {
+                    // Three.js equirect uses atan2(z,x)/(2π)+0.5, our data uses phi=2π*u with dirX=cos(phi).
+                    // Mirror + 180° offset corrects static alignment; inverse hShift matches HDRI preview direction.
+                    const srcX = ((width / 2 - x - hShift) % width + width) % width;
+                    const src = (srcY * width + srcX) * 3;
+                    const dst = (y * width + x) * 4;
+                    data[dst]     = Math.min(255, Math.floor(Math.pow(hdriCache.colors[src]     || 0, 1 / contrast) * intensity * 255));
+                    data[dst + 1] = Math.min(255, Math.floor(Math.pow(hdriCache.colors[src + 1] || 0, 1 / contrast) * intensity * 255));
+                    data[dst + 2] = Math.min(255, Math.floor(Math.pow(hdriCache.colors[src + 2] || 0, 1 / contrast) * intensity * 255));
+                    data[dst + 3] = 255;
+                }
             }
 
             if (hdriEnvMapTexture) {
