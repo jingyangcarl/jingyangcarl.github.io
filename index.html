@@ -3104,6 +3104,7 @@
                     applyHDRIEnvMap();
                     args.lightstage.patterns.idx = -1;
                     hdriDirty = false;
+                    updateOlatPreviewCanvas();
                 }
             } else if (args.lightstage.patterns.active === 'all') {
                 if (allPhase !== 'brdf' && brdfOverrideActive) clearBrdfOverride();
@@ -3577,7 +3578,10 @@
                         layoutEquirectPreview(hdriPreviewCanvas, hdriPreviewCtx, hdriPreviewOffscreen, equirectX, equirectY, clampedWidth, clampedHeight, true);
                     }
                     if (olatPreviewCanvas) {
+                        const _isEnvMap = args.lightstage.patterns.active === 'hdri_envmap'
+                            || (args.lightstage.patterns.active === 'all' && allPhase === 'hdri_envmap');
                         olatPreviewCanvas.style.display = 'block';
+                        olatPreviewCanvas.style.filter = _isEnvMap ? 'blur(6px)' : 'none';
                         layoutEquirectPreview(olatPreviewCanvas, olatPreviewCtx, olatPreviewOffscreen, equirectX2, equirectY2, clampedWidth, clampedHeight, false);
                     }
                 } else {
@@ -3977,6 +3981,7 @@
 
             const patterns = args.lightstage.patterns;
             const isHdriPhase = patterns.active === 'hdri' || (patterns.active === 'all' && allPhase === 'hdri');
+            const isEnvMapPhase = patterns.active === 'hdri_envmap' || (patterns.active === 'all' && allPhase === 'hdri_envmap');
             const { mode, boardIndex } = getOlatPhaseInfo();
 
             const olatIntensity = (typeof patterns.olatIntensity === 'number') ? patterns.olatIntensity : 1.0;
@@ -3997,6 +4002,26 @@
 
             if (isHdriPhase && useMap && hdriBaseColorsDirty) {
                 buildHdriBaseColors(width, height);
+            }
+
+            if (isEnvMapPhase && hdriCache && hdriCache.colors && hdriCache.width === width && hdriCache.height === height) {
+                for (let y = 0; y < height; y++) {
+                    const srcY = ((y - vShift) % height + height) % height;
+                    for (let x = 0; x < width; x++) {
+                        const srcX = ((x - hShift) % width + width) % width;
+                        const src = (srcY * width + srcX) * 3;
+                        const r = Math.min(1, Math.max(0, Math.pow(hdriCache.colors[src]     || 0, 1 / contrast))) * hdriIntensity;
+                        const g = Math.min(1, Math.max(0, Math.pow(hdriCache.colors[src + 1] || 0, 1 / contrast))) * hdriIntensity;
+                        const b = Math.min(1, Math.max(0, Math.pow(hdriCache.colors[src + 2] || 0, 1 / contrast))) * hdriIntensity;
+                        const i4 = (y * width + x) * 4;
+                        data[i4]     = Math.min(255, Math.floor(r * 255));
+                        data[i4 + 1] = Math.min(255, Math.floor(g * 255));
+                        data[i4 + 2] = Math.min(255, Math.floor(b * 255));
+                        data[i4 + 3] = 255;
+                    }
+                }
+                olatPreviewOffCtx.putImageData(imgData, 0, 0);
+                return;
             }
 
             for (let y = 0; y < height; y++) {
@@ -4171,7 +4196,7 @@
 
             const isEnvMapPhase = patterns.active === 'hdri_envmap' || (patterns.active === 'all' && allPhase === 'hdri_envmap');
 
-            if (isOffPhase || (!overlayOlatMarker && isEnvMapPhase)) {
+            if (isOffPhase) {
                 previewCtx.fillStyle = '#000000';
                 previewCtx.fillRect(0, 0, width, height);
             } else if (isWarmupPhase) {
