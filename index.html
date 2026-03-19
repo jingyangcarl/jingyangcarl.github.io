@@ -525,7 +525,7 @@
             gui.close();
 
             let gui_ls = gui.addFolder('Light Stage Setting');
-            gui_ls.open();
+            // gui_ls.open();
             gui_ls.add( args.lightstage, 'shape', {
                 Icosahedron: 'icosahedron',
                 'UV Sphere': 'uvsphere',
@@ -737,7 +737,7 @@
                 if (helper.visible) helper.update();
             } ).listen();
             let gui_side = gui_render.addFolder('Side Renderer');
-            gui_side.open();
+            // gui_side.open();
             gui_side.add( args.render.sideRender, 'show').name('Render Selected Camera').onChange(v => {
                 // keep existing behavior if rendererObject exists, otherwise just toggle flag
                 if (typeof rendererObject !== 'undefined' && rendererObject && rendererObject.domElement) {
@@ -761,7 +761,7 @@
             gui_side.add( args.render.sideRender, 'miniScalar', 8, 12, 1 ).name('Illumination Inset Scalar').listen();
             // Camera settings grouped under Side Renderer -> Camera
             let gui_camera = gui_render.addFolder('Scene Camera');
-            gui_camera.open();
+            // gui_camera.open();
             gui_camera.add( args.render.camera, 'showCamera').name('Show Camera').onChange(v => {
                 if (cameraHelpersArr && cameraHelpersArr.length > 0) cameraHelpersArr.forEach(h => h.visible = v);
                 if (cameraMarkers) cameraMarkers.visible = v;
@@ -800,22 +800,22 @@
             }).listen();
 
             let gui_perspective_camera = gui_render.addFolder('Perspective Camera');
-            gui_perspective_camera.open();
+            // gui_perspective_camera.open();
             gui_perspective_camera.add( args.controls, 'autoRotate').name('Camera Auto Rotation').onChange(v => controls.autoRotate = v).listen();
             gui_perspective_camera.add( args.controls, 'autoRotateSpeed', 0, 1, 0.1).name('Camera Rotate Speed').onChange(v => controls.autoRotateSpeed = v).listen();
 
             let gui_illumination = gui_render.addFolder('Illumination');
-            gui_illumination.open();
+            // gui_illumination.open();
             gui_illumination.add( args.render.sideRender, 'illuminationView', { 'Selected Camera': 'selected', 'Perspective Camera': 'overall' } ).name('Illumination Coords').listen();
 
             let gui_save = gui_render.addFolder('Save');
-            gui_save.open();
+            // gui_save.open();
             gui_save.add(args.render.save, 'transparentBackground').name('Transparent Background').listen();
             gui_save.add({ saveSideRenderer: () => saveSideRenderer() }, 'saveSideRenderer').name('Save Side Renderer');
             gui_save.add({ saveIlluminationSet: () => saveIlluminationSet() }, 'saveIlluminationSet').name('Save Illumination Set');
 
             let gui_projects = gui.addFolder('Projects');
-            gui_projects.open();
+            // gui_projects.open();
             gui_projects.add( args.projects, 'show').name('Show Projects').onChange(v => {
                 if (sphereLabels) {
                     sphereLabels.visible = v;
