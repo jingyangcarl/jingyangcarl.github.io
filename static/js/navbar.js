@@ -49,7 +49,7 @@ document.write(`
                     <div class="navbar-item">
                         <b>Research on Science of Science</b>
                     </div>
-                    <a class="navbar-item" href="">
+                    <a class="navbar-item" href="https://iclr.cc/virtual/2026/poster/10010812">
                         ICLR 2026 - Paper Copilot: Tracking the Evolution of Peer Review in AI Conferences
                     </a>
                     <a class="navbar-item" href="https://icml.cc/virtual/2025/poster/40116">
