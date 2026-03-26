@@ -25,7 +25,7 @@ document.write(`
                     <a class="navbar-item" href="https://jingyangcarl.github.io/ICTPolarReal">
                         CVPR 2026 - A Polarized Reflection and Material Dataset (USC)
                     </a>
-                    <a class="navbar-item" href="https://arxiv.org/abs/2408.00083">
+                    <a class="navbar-item" href="https://corneliushsiao.github.io/GSLE">
                         WACV 2025 - Localized Gaussian Splatting Editing (USC)
                     </a>
                     <a class="navbar-item" href="https://jingyangcarl.github.io/RelightableStudio/">
