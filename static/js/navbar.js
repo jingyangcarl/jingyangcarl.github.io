@@ -52,11 +52,11 @@ document.write(`
                     <a class="navbar-item" href="">
                         ICLR 2026 - Paper Copilot: Tracking the Evolution of Peer Review in AI Conferences
                     </a>
-                    <a class="navbar-item" href="https://papercopilot.com">
-                        Paper Copilot (papercopilot.com - 16.58M+ global impression)
-                    </a>
                     <a class="navbar-item" href="https://icml.cc/virtual/2025/poster/40116">
                         ICML 2025 - Position: The AI/ML Community Should Adopt a More Transparent and Regulated Peer Review Process (USC)
+                    </a>
+                    <a class="navbar-item" href="https://papercopilot.com">
+                        Paper Copilot (papercopilot.com - 16.58M+ global impression)
                     </a>
                 </div>
             </div>
