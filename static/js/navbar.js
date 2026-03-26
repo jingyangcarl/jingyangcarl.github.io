@@ -34,7 +34,7 @@ document.write(`
                     <a class="navbar-item" href="https://jingyangcarl.github.io/PolarizedReflectanceField">
                         2024 - Polarized Reflectance Field (USC &amp; Sony Research)
                     </a>
-                    <a class="navbar-item" href="https://github.com/FreedomGu/DiffPortrait3D">
+                    <a class="navbar-item" href="https://freedomgu.github.io/DiffPortrait3D/">
                         CVPR 2024 - DiffPortrait3D (USC &amp; Tiktok)
                     </a>
                     <a class="navbar-item" href="https://jingyangcarl.github.io/LightSamplingField/">
