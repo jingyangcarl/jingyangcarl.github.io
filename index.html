@@ -1066,7 +1066,28 @@
             return lightboard;
         }
 
-        function setupLightStage(reset=false) {
+        function scheduleLightStageBuild(callback) {
+            if ('requestIdleCallback' in window) {
+                window.requestIdleCallback(callback, { timeout: 50 });
+            } else {
+                window.setTimeout(() => callback(null), 0);
+            }
+        }
+
+        function disposeLightStageGroup(group) {
+            if (!group) return;
+            group.traverse((child) => {
+                if (child.geometry && child.geometry.dispose) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) child.material.forEach(mat => mat && mat.dispose && mat.dispose());
+                    else if (child.material.dispose) child.material.dispose();
+                }
+            });
+        }
+
+        function setupLightStage(reset=false, options={}) {
+            const asyncBuild = !!(options && options.asyncBuild);
+            const buildToken = ++lightStageBuildToken;
             const prevLightboards = lightboards;
             const prevRig = rig;
 
@@ -1242,10 +1263,10 @@
                 document.body.appendChild(warningDiv);
             }
 
-            // Add light boards to the scene
-            lightboards = new THREE.Group();
-            lightboards.name = 'lightboards';
-            positions.forEach(pos => {
+            // Add light boards to an off-scene group first so OLAT never sees a partial rebuild.
+            const nextLightboards = new THREE.Group();
+            nextLightboards.name = 'lightboards';
+            const addLightboard = (pos) => {
                 // Random drops: skip this lightboard based on randomDrops probability
                 if (Math.random() < args.lightstage.randomDrops) {
                     return; // Skip this lightboard
@@ -1257,42 +1278,88 @@
                 lightboard.visible = args.lightstage.lightboard.show;
                 lightboard.position.copy(pos);
                 lightboard.lookAt(0, 0, 0);
-                lightboards.add(lightboard);
-            });
-            scene.add(lightboards);
+                nextLightboards.add(lightboard);
+            };
 
-            // light stage rig
-            var geo = (stageShape === 'cube')
-                ? new THREE.WireframeGeometry( geometry )
-                : new THREE.EdgesGeometry( geometry ); // or rigGeometry( geometry )
-            var mat = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 2, transparent: true, opacity: args.lightstage.rig.opacity} );
-            rig = new THREE.LineSegments( geo, mat );
-            rig.name = 'rig';
-            rig.visible = args.lightstage.rig.show;
-            scene.add( rig );
+            const finishLightStageBuild = () => {
+                if (buildToken !== lightStageBuildToken) {
+                    disposeLightStageGroup(nextLightboards);
+                    if (geometry && geometry.dispose) geometry.dispose();
+                    return;
+                }
 
-            // update layout preview wireframe
-            updateLayoutPreviewRig(geometry, stageShape);
+                const nextRigGeometry = (stageShape === 'cube')
+                    ? new THREE.WireframeGeometry( geometry )
+                    : new THREE.EdgesGeometry( geometry ); // or rigGeometry( geometry )
+                const nextRigMaterial = new THREE.LineBasicMaterial( { color: 0xffffff, linewidth: 2, transparent: true, opacity: args.lightstage.rig.opacity} );
+                const nextRig = new THREE.LineSegments( nextRigGeometry, nextRigMaterial );
+                nextRig.name = 'rig';
+                nextRig.visible = args.lightstage.rig.show;
 
-            // carry over current light state to avoid a flash on rebuild
-            if (reset && prevLightboards) {
-                copyLightboardState(prevLightboards, lightboards);
+                // carry over current light state to avoid a flash on rebuild
+                if (reset && prevLightboards) {
+                    copyLightboardState(prevLightboards, nextLightboards);
+                }
+
+                lightboards = nextLightboards;
+                rig = nextRig;
+                scene.add(lightboards);
+                scene.add(rig);
+
+                // update layout preview wireframe
+                updateLayoutPreviewRig(geometry, stageShape);
+
+                // swap old rig/lightboards after new ones are ready (reduces flashing)
+                if (reset && prevLightboards) {
+                    scene.remove(prevLightboards);
+                    disposeLightStageGroup(prevLightboards);
+                }
+                if (reset && prevRig) {
+                    scene.remove(prevRig);
+                    if (prevRig.geometry) prevRig.geometry.dispose();
+                    if (prevRig.material) prevRig.material.dispose();
+                }
+
+                hdriDirty = true;
+                hdriAssignmentDirty = true;
+                hdriBaseColorsDirty = true;
+                rebuildLightboardRefs();
+
+                if (reset && typeof setupIlluminationPreview === 'function') {
+                    setupIlluminationPreview();
+                } else if (!reset && illuminationSceneGrey && illuminationSceneChrome && typeof setupIlluminationPreview === 'function') {
+                    setupIlluminationPreview();
+                }
+            };
+
+            if (asyncBuild) {
+                let index = 0;
+                const buildChunk = (deadline) => {
+                    if (buildToken !== lightStageBuildToken) {
+                        disposeLightStageGroup(nextLightboards);
+                        if (geometry && geometry.dispose) geometry.dispose();
+                        return;
+                    }
+
+                    const start = performance.now();
+                    while (index < positions.length) {
+                        addLightboard(positions[index++]);
+                        const hasIdleTime = deadline && typeof deadline.timeRemaining === 'function' && deadline.timeRemaining() > 3;
+                        if (!hasIdleTime && performance.now() - start > 8) break;
+                    }
+
+                    if (index < positions.length) {
+                        scheduleLightStageBuild(buildChunk);
+                    } else {
+                        finishLightStageBuild();
+                    }
+                };
+                scheduleLightStageBuild(buildChunk);
+                return;
             }
 
-            // swap old rig/lightboards after new ones are ready (reduces flashing)
-            if (reset) {
-                if (prevLightboards) scene.remove(prevLightboards);
-                if (prevRig) scene.remove(prevRig);
-            }
-
-            if (reset && typeof setupIlluminationPreview === 'function') {
-                setupIlluminationPreview();
-            }
-
-            hdriDirty = true;
-            hdriAssignmentDirty = true;
-            hdriBaseColorsDirty = true;
-            rebuildLightboardRefs();
+            positions.forEach(addLightboard);
+            finishLightStageBuild();
 
         }
 
@@ -4295,6 +4362,7 @@
         let rig, lightboards;
         let lightboardRefs = [];
         let lightboardRefsVersion = 0;
+        let lightStageBuildToken = 0;
         let axesHelper;
         let axesLabelGroup;
         let axesLabelElements = [];
@@ -4664,7 +4732,7 @@
         if (infoDiv) infoDiv.style.display = args.projects.showTitle ? 'block' : 'none';
         setupStats();
         loadObject(args.lightstage.object.type);
-        setupLightStage();
+        setupLightStage(false, { asyncBuild: true });
         setupRayCaster();
         setupIlluminationPreview();
         setupOrbitControls();
