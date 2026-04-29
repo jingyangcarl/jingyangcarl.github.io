@@ -141,13 +141,6 @@
         function init() {
             // Scene setup
             scene = new THREE.Scene();
-            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x202040, 0.65);
-            const keyLight = new THREE.DirectionalLight(0xffffff, 1.1);
-            keyLight.position.set(1.5, 2.0, 3.0);
-            fallbackLights = [hemiLight, keyLight];
-            updateFallbackLighting();
-            scene.add(hemiLight);
-            scene.add(keyLight);
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.z = 2.5;
             cameraObject = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
@@ -658,9 +651,6 @@
 
             let gui_render = gui.addFolder('Render');
             gui_render.open();
-            gui_render.add(args.render, 'showStats').name('Show FPS').onChange(v => {
-                if (stats && stats.dom) stats.dom.style.display = v ? 'block' : 'none';
-            }).listen();
             gui_render.add(args.render, 'showAxis').name('Show Axis').onChange(v => {
                 if (axesHelper) axesHelper.visible = v;
                 if (axesLabelGroup) axesLabelGroup.visible = v;
@@ -816,19 +806,6 @@
 
             let gui_illumination = gui_render.addFolder('Illumination');
             // gui_illumination.open();
-            gui_illumination.add( args.render.lighting, 'physicalPointLights').name('Physical Point Lights').onChange(() => {
-                updateFallbackLighting();
-                args.lightstage.patterns.idx = 0;
-                hdriDirty = true;
-                olatPreviewDirty = true;
-                setupIlluminationPreview();
-            }).listen();
-            gui_illumination.add( args.render.lighting, 'maxActivePointLights', 16, 512, 1).name('Max Point Lights').onChange(() => {
-                args.lightstage.patterns.idx = 0;
-                hdriDirty = true;
-                olatPreviewDirty = true;
-                setupIlluminationPreview();
-            }).listen();
             gui_illumination.add( args.render.sideRender, 'illuminationView', { 'Selected Camera': 'selected', 'Perspective Camera': 'overall' } ).name('Illumination Coords').listen();
 
             let gui_save = gui_render.addFolder('Save');
@@ -861,7 +838,6 @@
 
         function setupStats() {
             stats = new Stats();
-            stats.dom.style.display = args.render.showStats ? 'block' : 'none';
             document.body.appendChild(stats.dom);
         }
 
@@ -964,16 +940,8 @@
             }
         }
 
-        function scheduleLightStageChunk(callback) {
-            if ('requestIdleCallback' in window) {
-                window.requestIdleCallback(callback, { timeout: 100 });
-            } else {
-                window.setTimeout(callback, 0);
-            }
-        }
-
         // Function to create a snowflake-shaped light board
-        function createLightBoard(ledIntensities, includePointLight = true) {
+        function createLightBoard(ledIntensities) {
             const lightboard = new THREE.Group();
             let leds = {
                 positions: [],
@@ -1073,14 +1041,12 @@
                 ledsGroup.visible = args.lightstage.lightboard.leds.show;
                 ledsGroup.name = 'leds';
 
-                if (includePointLight) {
-                    let point_light = new THREE.PointLight(0xffffff, 1);
-                    point_light.name = 'led_light';
-                    point_light.power = 1700;
-                    point_light.visible = false;
-                    point_light.layers.enable(2); // allow illumination preview objects to be lit
-                    lightboard.add(point_light);
-                }
+                let point_light = new THREE.PointLight(0xffffff, 1);
+                point_light.name = 'led_light';
+                point_light.power = 1700;
+                point_light.visible = false;
+                point_light.layers.enable(2); // allow illumination preview objects to be lit
+                lightboard.add(point_light);
                 
                 lightboard.add(ledsGroup);
                 lightboard.userData['leds'] = {
@@ -1277,9 +1243,22 @@
             }
 
             // Add light boards to the scene
-            const buildId = ++lightStageBuildId;
             lightboards = new THREE.Group();
             lightboards.name = 'lightboards';
+            positions.forEach(pos => {
+                // Random drops: skip this lightboard based on randomDrops probability
+                if (Math.random() < args.lightstage.randomDrops) {
+                    return; // Skip this lightboard
+                }
+
+                let ledIntensities = Object.entries(args.lightstage.lightboard.leds.colors).map(([k, v]) => (new THREE.Color(v)));
+                const lightboard = createLightBoard(ledIntensities);
+                lightboard.name = 'lightboard';
+                lightboard.visible = args.lightstage.lightboard.show;
+                lightboard.position.copy(pos);
+                lightboard.lookAt(0, 0, 0);
+                lightboards.add(lightboard);
+            });
             scene.add(lightboards);
 
             // light stage rig
@@ -1295,85 +1274,25 @@
             // update layout preview wireframe
             updateLayoutPreviewRig(geometry, stageShape);
 
+            // carry over current light state to avoid a flash on rebuild
+            if (reset && prevLightboards) {
+                copyLightboardState(prevLightboards, lightboards);
+            }
+
+            // swap old rig/lightboards after new ones are ready (reduces flashing)
+            if (reset) {
+                if (prevLightboards) scene.remove(prevLightboards);
+                if (prevRig) scene.remove(prevRig);
+            }
+
+            if (reset && typeof setupIlluminationPreview === 'function') {
+                setupIlluminationPreview();
+            }
+
             hdriDirty = true;
             hdriAssignmentDirty = true;
             hdriBaseColorsDirty = true;
-            olatPreviewDirty = true;
-
-            const targetLightboards = lightboards;
-            const targetRig = rig;
-            const ledIntensities = Object.entries(args.lightstage.lightboard.leds.colors).map(([k, v]) => (new THREE.Color(v)));
-            let positionIndex = 0;
-            const totalPositions = positions.length;
-            const chunkSize = totalPositions > 300 ? 80 : totalPositions;
-
-            const finishBuild = () => {
-                if (buildId !== lightStageBuildId) return;
-
-                // carry over current light state to avoid a flash on rebuild
-                if (reset && prevLightboards) {
-                    copyLightboardState(prevLightboards, targetLightboards);
-                }
-
-                // swap old rig/lightboards after new ones are ready (reduces flashing)
-                if (reset) {
-                    if (prevLightboards) scene.remove(prevLightboards);
-                    if (prevRig) scene.remove(prevRig);
-                }
-
-                rebuildLightboardRefs();
-                args.lightstage.patterns.idx = 0;
-                hdriDirty = true;
-                hdriAssignmentDirty = true;
-                hdriBaseColorsDirty = true;
-                olatPreviewDirty = true;
-
-                if (typeof setupIlluminationPreview === 'function') {
-                    setupIlluminationPreview();
-                }
-            };
-
-            const buildChunk = () => {
-                if (buildId !== lightStageBuildId) {
-                    scene.remove(targetLightboards);
-                    scene.remove(targetRig);
-                    return;
-                }
-
-                if (isModelLoading && positionIndex > 0 && totalPositions > chunkSize) {
-                    window.setTimeout(buildChunk, 100);
-                    return;
-                }
-
-                const end = Math.min(totalPositions, positionIndex + chunkSize);
-                for (; positionIndex < end; positionIndex++) {
-                    const pos = positions[positionIndex];
-                    // Random drops: skip this lightboard based on randomDrops probability
-                    if (Math.random() < args.lightstage.randomDrops) {
-                        continue;
-                    }
-
-                    const includePointLight = shouldUsePhysicalPointLight(positionIndex, totalPositions);
-                    const lightboard = createLightBoard(ledIntensities, includePointLight);
-                    lightboard.name = 'lightboard';
-                    lightboard.visible = args.lightstage.lightboard.show;
-                    lightboard.position.copy(pos);
-                    lightboard.lookAt(0, 0, 0);
-                    targetLightboards.add(lightboard);
-                }
-
-                rebuildLightboardRefs();
-                args.lightstage.patterns.idx = 0;
-                olatPreviewDirty = true;
-
-                if (positionIndex < totalPositions) {
-                    scheduleLightStageChunk(buildChunk);
-                } else {
-                    finishBuild();
-                }
-            };
-
-            buildChunk();
+            rebuildLightboardRefs();
 
         }
 
@@ -1926,40 +1845,6 @@
             }
         }
 
-        function physicalPointLightsEnabled() {
-            return !!(args && args.render && args.render.lighting && args.render.lighting.physicalPointLights);
-        }
-
-        function getMaxActivePointLights() {
-            const value = args && args.render && args.render.lighting
-                ? args.render.lighting.maxActivePointLights
-                : 128;
-            return Math.max(1, Math.round(value || 128));
-        }
-
-        function shouldUsePhysicalPointLight(index, count) {
-            if (!physicalPointLightsEnabled()) return false;
-            const total = count || (lightboardRefs && lightboardRefs.length) || 0;
-            if (total <= 0) return false;
-            const maxLights = getMaxActivePointLights();
-            if (total <= maxLights) return true;
-            const stride = Math.ceil(total / maxLights);
-            return index % stride === 0;
-        }
-
-        function updateFallbackLighting() {
-            if (!fallbackLights) return;
-            const useFallback = !physicalPointLightsEnabled();
-            fallbackLights.forEach(light => {
-                if (light) light.visible = useFallback;
-            });
-        }
-
-        function setLedPointLightVisible(ref, isVisible, index) {
-            if (!ref || !ref.ledLight) return;
-            ref.ledLight.visible = isVisible && shouldUsePhysicalPointLight(index, lightboardRefs.length);
-        }
-
         function disableAllLightSources() {
             if (!lightboardRefs || lightboardRefs.length === 0) return;
             lightboardRefs.forEach((ref) => {
@@ -2295,7 +2180,6 @@
                     toCacheEntry(imgVista, false, 'custom1');
                     hdriDirty = true;
                     hdriPreviewDirty = true;
-                    olatPreviewDirty = true;
                     hdriBaseColorsDirty = true;
                 },
                 () => {
@@ -2305,7 +2189,6 @@
                             toCacheEntry(imgFallback, false, 'custom1');
                             hdriDirty = true;
                             hdriPreviewDirty = true;
-                            olatPreviewDirty = true;
                             hdriBaseColorsDirty = true;
                         },
                         () => {
@@ -2321,7 +2204,6 @@
                     toCacheEntry(imgSample, true, 'custom2');
                     hdriDirty = true;
                     hdriPreviewDirty = true;
-                    olatPreviewDirty = true;
                     hdriBaseColorsDirty = true;
                 },
                 () => {
@@ -2418,7 +2300,6 @@
                 else hdriCache = generateGradientHDRI(width, height);
                 if (!isCustom || !customHdriCache[pattern]) hdriCache.pattern = pattern;
                 hdriPreviewDirty = true;
-                olatPreviewDirty = true;
                 hdriBaseColorsDirty = true;
             }
 
@@ -2459,7 +2340,7 @@
             if (!lightboardRefs || lightboardRefs.length === 0) return;
             if (intensity <= 0) {
                 hdriBoardColors.fill(0);
-                lightboardRefs.forEach((ref, i) => {
+                lightboardRefs.forEach((ref) => {
                     const leds = ref.ledsAttr;
                     const leds_init = ref.ledsInit;
                     const led_light = ref.ledLight;
@@ -2468,14 +2349,13 @@
                         leds.setXYZ(j, 0, 0, 0);
                     }
                     if (led_light) {
-                        setLedPointLightVisible(ref, false, i);
+                        led_light.visible = true;
                         led_light.color.setRGB(0, 0, 0);
                         led_light.intensity = 0;
                     }
                     leds.needsUpdate = true;
                 });
                 hdriPreviewDirty = true;
-                olatPreviewDirty = true;
                 updateHdriPreviewCanvas();
                 updateOlatPreviewCanvas();
                 return;
@@ -2508,14 +2388,13 @@
                 }
 
                 if (led_light) {
-                    setLedPointLightVisible(ref, true, i);
+                    led_light.visible = true;
                     led_light.color.setRGB(r, g, b);
                     led_light.intensity = lightIntensity;
                 }
                 leds.needsUpdate = true;
             });
             hdriPreviewDirty = true;
-            olatPreviewDirty = true;
             updateHdriPreviewCanvas();
             updateOlatPreviewCanvas();
         }
@@ -2549,7 +2428,6 @@
                 }
                 if (!isCustom || !customEntry) hdriCache.pattern = pattern;
                 hdriPreviewDirty = true;
-                olatPreviewDirty = true;
             }
 
             const intensity = (typeof patterns.hdriIntensity === 'number')
@@ -2591,7 +2469,6 @@
 
             disableAllLightSources();
             hdriPreviewDirty = true;
-            olatPreviewDirty = true;
             updateHdriPreviewCanvas();
         }
 
@@ -2658,28 +2535,30 @@
 
         function preloadGlbAssets() {
             const glbPaths = ['static/mesh/goose.glb', 'static/mesh/cat_and_seal.glb', 'static/mesh/stanford_bunny.glb'];
-            const preloadNext = (index = 0) => {
+            let index = 0;
+
+            const preloadNext = () => {
                 if (index >= glbPaths.length) return;
-                const path = glbPaths[index];
-                requestGlbRoot(path).then((root) => {
-                    // Keep idle preloading CPU/network-only; GPU texture upload can stall interaction.
-                }).catch((err) => {
+                const path = glbPaths[index++];
+                requestGlbRoot(path).catch((err) => {
                     console.warn(`Preload failed for ${path}`, err);
                 }).finally(() => {
-                    window.setTimeout(() => preloadNext(index + 1), 500);
+                    window.setTimeout(preloadNext, 300);
                 });
             };
+
             preloadNext();
         }
 
         function scheduleGlbPreload() {
             if (hasScheduledGlbPreload) return;
             hasScheduledGlbPreload = true;
-            const preload = () => preloadGlbAssets();
+
+            const startPreload = () => preloadGlbAssets();
             if ('requestIdleCallback' in window) {
-                window.requestIdleCallback(preload, { timeout: 4000 });
+                window.requestIdleCallback(startPreload, { timeout: 4000 });
             } else {
-                window.setTimeout(preload, 2500);
+                window.setTimeout(startPreload, 2500);
             }
         }
 
@@ -2806,10 +2685,9 @@
             illuminationLightsGrey = [];
             illuminationLightsChrome = [];
             if (lightboards && lightboards.children && lightboards.children.length > 0) {
-                const lightboardCount = lightboards.children.length;
-                lightboards.children.forEach((lightboard, i) => {
+                lightboards.children.forEach((lightboard) => {
                     const srcLight = lightboard.getObjectByName('led_light');
-                    if (!srcLight || !shouldUsePhysicalPointLight(i, lightboardCount)) {
+                    if (!srcLight) {
                         illuminationLightsGrey.push(null);
                         illuminationLightsChrome.push(null);
                         return;
@@ -3059,12 +2937,12 @@
                     if (patterns.idx < n_all_white) {
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
-                            setLedPointLightVisible(ref, true, i);
+                            led_light.visible = true;
                         }
                     } else if (patterns.idx < (n_all_white + n_all_off)) {
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                            setLedPointLightVisible(ref, false, i);
+                            led_light.visible = false;
                         }
                     } else {
                         if (i+(n_all_white + n_all_off) == patterns.idx) {
@@ -3072,7 +2950,7 @@
                                 const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
                                 if (isWhite) {
                                     leds.setXYZ(j, olatIntensity * _olatColor.r, olatIntensity * _olatColor.g, olatIntensity * _olatColor.b);
-                                    setLedPointLightVisible(ref, true, i);
+                                    led_light.visible = true;
                                 } else {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
                                 }
@@ -3082,7 +2960,7 @@
                                 const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
                                 if (isWhite) {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                                    setLedPointLightVisible(ref, false, i);
+                                    led_light.visible = false;
                                 } else {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
                                 }
@@ -3161,7 +3039,7 @@
             const lightboardsChanged = (_warmupLightboardVersion !== lightboardRefsVersion);
             if (patterns.idx >= 0 || warmupChanged || lightboardsChanged) {
                 if (!lightboardRefs || lightboardRefs.length === 0) return false;
-                lightboardRefs.forEach((ref, i) => {
+                lightboardRefs.forEach((ref) => {
                     let leds = ref.ledsAttr;
                     let leds_init = ref.ledsInit;
                     let led_light = ref.ledLight;
@@ -3173,7 +3051,7 @@
                         } else {
                             leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
                         }
-                        setLedPointLightVisible(ref, true, i);
+                        if (led_light) led_light.visible = true;
                     }
                     if (led_light) {
                         led_light.color.copy(_olatColor);
@@ -3286,14 +3164,14 @@
                 const patterns = args.lightstage.patterns;
                 if (patterns.idx >= 0) {
                     if (!lightboardRefs || lightboardRefs.length === 0) return;
-                    lightboardRefs.forEach((ref, i) => {
+                    lightboardRefs.forEach((ref) => {
                         let leds = ref.ledsAttr;
                         let leds_init = ref.ledsInit;
                         let led_light = ref.ledLight;
                         if (!leds || !leds_init) return;
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                            setLedPointLightVisible(ref, false, i);
+                            led_light.visible = false;
                         }
                         leds.needsUpdate = true;
                     });
@@ -3333,7 +3211,7 @@
         // Animation loop
         function animate() {
             render();
-            if (stats) stats.update();
+            stats.update();
             controls.update();
         }
 
@@ -3390,9 +3268,7 @@
             }
 
             updatePattern();
-            if (args.render.sideRender.show && args.render.sideRender.showIllumination) {
-                syncIlluminationLights();
-            }
+            syncIlluminationLights();
 
             // inset scene
             // debugger;
@@ -4095,12 +3971,19 @@
         function updateOlatPreviewCanvas() {
             if (!olatPreviewCanvas || !olatPreviewCtx || !olatPreviewOffscreen || !olatPreviewOffCtx) return;
             if (!lightboards || lightboards.children.length === 0) return;
-            const patterns = args.lightstage.patterns;
-            const _olatPattern = patterns.hdriPattern || 'gradient';
+            const _olatPattern = args.lightstage.patterns.hdriPattern || 'gradient';
             const _olatIsCustom = _olatPattern === 'custom1' || _olatPattern === 'custom2';
-            const width = _olatIsCustom ? 512 : (patterns.hdriResolution || 128);
+            const width = _olatIsCustom ? 512 : (args.lightstage.patterns.hdriResolution || 128);
             const height = _olatIsCustom ? 256 : Math.floor(width / 2);
             if (width <= 0 || height <= 0) return;
+            olatPreviewOffscreen.width = width;
+            olatPreviewOffscreen.height = height;
+
+            const imgData = olatPreviewOffCtx.createImageData(width, height);
+            const data = imgData.data;
+            const off = 0.0;
+
+            const patterns = args.lightstage.patterns;
             const isHdriPhase = patterns.active === 'hdri' || (patterns.active === 'all' && allPhase === 'hdri');
             const isEnvMapPhase = patterns.active === 'hdri_envmap' || (patterns.active === 'all' && allPhase === 'hdri_envmap');
             const { mode, boardIndex } = getOlatPhaseInfo();
@@ -4120,34 +4003,6 @@
             const useMap = hdriAssignmentMap && hdriAssignmentWidth === width && hdriAssignmentHeight === height;
             const lightDirs = useMap ? null : lightboards.children.map(lb => lb.position.clone().normalize());
             const contrast = Math.max(0.01, patterns.hdriContrast || 1.0);
-            const nextSignature = [
-                width,
-                height,
-                patterns.active,
-                allPhase,
-                patterns.idx,
-                _olatPattern,
-                patterns.olatColor,
-                patterns.olatIntensity,
-                patterns.hdriIntensity,
-                patterns.hdriLightIntensity,
-                patterns.hdriContrast,
-                patterns.hdriHorizontalRotation,
-                patterns.hdriVerticalRotation,
-                useMap ? 'map' : 'nomap',
-                lightboardRefsVersion
-            ].join('|');
-
-            if (!olatPreviewDirty && !hdriAssignmentDirty && !hdriBaseColorsDirty && olatPreviewSignature === nextSignature) {
-                return;
-            }
-
-            olatPreviewOffscreen.width = width;
-            olatPreviewOffscreen.height = height;
-
-            const imgData = olatPreviewOffCtx.createImageData(width, height);
-            const data = imgData.data;
-            const off = 0.0;
 
             if (isHdriPhase && useMap && hdriBaseColorsDirty) {
                 buildHdriBaseColors(width, height);
@@ -4170,8 +4025,6 @@
                     }
                 }
                 olatPreviewOffCtx.putImageData(imgData, 0, 0);
-                olatPreviewDirty = false;
-                olatPreviewSignature = nextSignature;
                 return;
             }
 
@@ -4224,8 +4077,6 @@
             }
 
             olatPreviewOffCtx.putImageData(imgData, 0, 0);
-            olatPreviewDirty = false;
-            olatPreviewSignature = nextSignature;
         }
 
         function setupBrdfPreview() {
@@ -4444,8 +4295,6 @@
         let rig, lightboards;
         let lightboardRefs = [];
         let lightboardRefsVersion = 0;
-        let lightStageBuildId = 0;
-        let fallbackLights = [];
         let axesHelper;
         let axesLabelGroup;
         let axesLabelElements = [];
@@ -4505,8 +4354,6 @@
         let hdriBaseColors = null;
         let hdriBaseColorsDirty = true;
         let hdriPreviewDirty = true;
-        let olatPreviewDirty = true;
-        let olatPreviewSignature = '';
         let hdriEnvMapTexture = null;
         let customHdriCache = { custom1: null, custom2: null };
         let brdfPreviewDirty = true;
@@ -4618,12 +4465,7 @@
                 fullscreen: function() {},
             },
             render: {
-                showStats: true,
                 showAxis: false,
-                lighting: {
-                    physicalPointLights: true,
-                    maxActivePointLights: 128,
-                },
                 save: {
                     transparentBackground: true,
                 },
