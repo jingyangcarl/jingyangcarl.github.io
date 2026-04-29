@@ -1340,6 +1340,11 @@
                     return;
                 }
 
+                if (isModelLoading && positionIndex > 0 && totalPositions > chunkSize) {
+                    window.setTimeout(buildChunk, 100);
+                    return;
+                }
+
                 const end = Math.min(totalPositions, positionIndex + chunkSize);
                 for (; positionIndex < end; positionIndex++) {
                     const pos = positions[positionIndex];
@@ -4816,8 +4821,8 @@
         const infoDiv = document.getElementById('info');
         if (infoDiv) infoDiv.style.display = args.projects.showTitle ? 'block' : 'none';
         setupStats();
-        setupLightStage();
         loadObject(args.lightstage.object.type);
+        setupLightStage();
         setupRayCaster();
         setupIlluminationPreview();
         setupOrbitControls();
