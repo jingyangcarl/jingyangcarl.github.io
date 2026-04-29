@@ -124,6 +124,7 @@
           }
         }
       </script>
+    <script src="static/cache/lightstage-icosahedron-r1_5-d5.js"></script>
     <script type="module">
         
         import * as THREE from 'three';
@@ -1085,6 +1086,65 @@
             });
         }
 
+        function getCachedLightStagePositions(stageShape) {
+            const caches = window.__LIGHTSTAGE_LAYOUT_CACHES__;
+            const cache = caches && caches['icosahedron-r1_5-d5'];
+            if (!cache) return null;
+            if (stageShape !== cache.shape) return null;
+            if (Math.abs((args.lightstage.radius || 1) - cache.radius) > 1e-6) return null;
+            if (Math.round(args.lightstage.ledDensity) !== cache.ledDensity) return null;
+            if (!Array.isArray(cache.positions) || cache.positions.length === 0) return null;
+            return cache.positions.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+        }
+
+        function getProgressiveBuildOrder(count) {
+            const order = [];
+            const seen = new Uint8Array(count);
+            let stride = 1;
+            while (stride < count) stride *= 2;
+            for (; stride >= 1; stride = Math.floor(stride / 2)) {
+                for (let i = 0; i < count; i += stride) {
+                    if (seen[i]) continue;
+                    seen[i] = 1;
+                    order.push(i);
+                }
+            }
+            return order;
+        }
+
+        function updateLightStageReveal() {
+            if (!lightboards || !lightboards.children) return;
+            lightboards.children.forEach((lightboard) => {
+                if (!lightboard || !lightboard.userData || lightboard.userData.revealProgress === undefined) return;
+                if (lightboard.userData.revealProgress >= 1) return;
+                lightboard.userData.revealProgress = Math.min(1, lightboard.userData.revealProgress + 0.12);
+                const t = lightboard.userData.revealProgress;
+                const eased = 1 - Math.pow(1 - t, 3);
+                lightboard.scale.setScalar(THREE.MathUtils.lerp(0.2, 1, eased));
+            });
+        }
+
+        function getLightStageCacheSnapshot() {
+            if (!lightboards || !lightboards.children) return null;
+            return {
+                version: 1,
+                shape: args.lightstage.shape,
+                radius: args.lightstage.radius,
+                ledDensity: args.lightstage.ledDensity,
+                count: lightboards.children.length,
+                targetCount: lightStageTargetBoardCount || lightboards.children.length,
+                inProgress: lightStageBuildInProgress,
+                positions: lightboards.children
+                    .slice()
+                    .sort((a, b) => (a.userData.stageIndex || 0) - (b.userData.stageIndex || 0))
+                    .map(lb => [
+                        Number(lb.position.x.toFixed(6)),
+                        Number(lb.position.y.toFixed(6)),
+                        Number(lb.position.z.toFixed(6)),
+                    ]),
+            };
+        }
+
         function setupLightStage(reset=false, options={}) {
             const asyncBuild = !!(options && options.asyncBuild);
             const buildToken = ++lightStageBuildToken;
@@ -1142,7 +1202,11 @@
             let geometry;
             let positions = [];
             const stageShape = (args.lightstage && args.lightstage.shape) ? args.lightstage.shape : 'icosahedron';
-            if (stageShape === 'uvsphere') {
+            const cachedPositions = getCachedLightStagePositions(stageShape);
+            if (cachedPositions) {
+                positions = cachedPositions;
+                geometry = new THREE.IcosahedronGeometry(args.lightstage.radius, args.lightstage.ledDensity - 1);
+            } else if (stageShape === 'uvsphere') {
                 const bands = Math.max(3, Math.round(args.lightstage.ledDensity * 2));
                 const slices = Math.max(6, Math.round(args.lightstage.ledDensity * 4));
                 const radius = args.lightstage.radius || 1;
@@ -1221,7 +1285,9 @@
                 });
             };
 
-            spiralSort(positions);
+            if (!cachedPositions) {
+                spiralSort(positions);
+            }
 
             // Warn if too many light sources (WebGL limitation)
             if (positions.length > 300) {
@@ -1266,7 +1332,7 @@
             // Add light boards to an off-scene group first so OLAT never sees a partial rebuild.
             const nextLightboards = new THREE.Group();
             nextLightboards.name = 'lightboards';
-            const addLightboard = (pos) => {
+            const addLightboard = (pos, sourceIndex) => {
                 // Random drops: skip this lightboard based on randomDrops probability
                 if (Math.random() < args.lightstage.randomDrops) {
                     return; // Skip this lightboard
@@ -1278,11 +1344,17 @@
                 lightboard.visible = args.lightstage.lightboard.show;
                 lightboard.position.copy(pos);
                 lightboard.lookAt(0, 0, 0);
+                lightboard.userData.stageIndex = sourceIndex;
+                if (asyncBuild) {
+                    lightboard.userData.revealProgress = 0;
+                    lightboard.scale.setScalar(0.2);
+                }
                 nextLightboards.add(lightboard);
             };
 
             const finishLightStageBuild = () => {
                 if (buildToken !== lightStageBuildToken) {
+                    if (nextLightboards.parent) nextLightboards.parent.remove(nextLightboards);
                     disposeLightStageGroup(nextLightboards);
                     if (geometry && geometry.dispose) geometry.dispose();
                     return;
@@ -1303,7 +1375,7 @@
 
                 lightboards = nextLightboards;
                 rig = nextRig;
-                scene.add(lightboards);
+                if (lightboards.parent !== scene) scene.add(lightboards);
                 scene.add(rig);
 
                 // update layout preview wireframe
@@ -1323,6 +1395,11 @@
                 hdriDirty = true;
                 hdriAssignmentDirty = true;
                 hdriBaseColorsDirty = true;
+                if (asyncBuild) {
+                    nextLightboards.children.sort((a, b) => (a.userData.stageIndex || 0) - (b.userData.stageIndex || 0));
+                }
+                lightStageBuildInProgress = false;
+                lightStageTargetBoardCount = 0;
                 rebuildLightboardRefs();
 
                 if (reset && typeof setupIlluminationPreview === 'function') {
@@ -1333,22 +1410,30 @@
             };
 
             if (asyncBuild) {
+                lightStageBuildInProgress = true;
+                lightStageTargetBoardCount = positions.length;
+                lightboards = nextLightboards;
+                scene.add(lightboards);
+                updateLayoutPreviewRig(geometry, stageShape);
                 let index = 0;
+                const buildOrder = getProgressiveBuildOrder(positions.length);
                 const buildChunk = (deadline) => {
                     if (buildToken !== lightStageBuildToken) {
+                        if (nextLightboards.parent) nextLightboards.parent.remove(nextLightboards);
                         disposeLightStageGroup(nextLightboards);
                         if (geometry && geometry.dispose) geometry.dispose();
                         return;
                     }
 
                     const start = performance.now();
-                    while (index < positions.length) {
-                        addLightboard(positions[index++]);
+                    while (index < buildOrder.length) {
+                        const sourceIndex = buildOrder[index++];
+                        addLightboard(positions[sourceIndex], sourceIndex);
                         const hasIdleTime = deadline && typeof deadline.timeRemaining === 'function' && deadline.timeRemaining() > 3;
-                        if (!hasIdleTime && performance.now() - start > 8) break;
+                        if (!hasIdleTime && performance.now() - start > 5) break;
                     }
 
-                    if (index < positions.length) {
+                    if (index < buildOrder.length) {
                         scheduleLightStageBuild(buildChunk);
                     } else {
                         finishLightStageBuild();
@@ -1358,7 +1443,7 @@
                 return;
             }
 
-            positions.forEach(addLightboard);
+            positions.forEach((pos, index) => addLightboard(pos, index));
             finishLightStageBuild();
 
         }
@@ -3353,8 +3438,11 @@
                 updateRays();
             }
 
-            updatePattern();
-            syncIlluminationLights();
+            updateLightStageReveal();
+            if (!lightStageBuildInProgress) {
+                updatePattern();
+                syncIlluminationLights();
+            }
 
             // inset scene
             // debugger;
@@ -3532,11 +3620,12 @@
 
                         if (layoutPreviewStats) {
                             const boardCount = lightboards && lightboards.children ? lightboards.children.length : 0;
+                            const boardTarget = lightStageBuildInProgress && lightStageTargetBoardCount ? `/${lightStageTargetBoardCount}` : '';
                             const density = (args && args.lightstage && typeof args.lightstage.ledDensity !== 'undefined') ? args.lightstage.ledDensity : '-';
                             const radiusVal = (args && args.lightstage && typeof args.lightstage.radius !== 'undefined') ? args.lightstage.radius : '-';
                             const shapeVal = (args && args.lightstage && typeof args.lightstage.shape !== 'undefined') ? args.lightstage.shape : '-';
                             const patternVal = (args && args.lightstage && args.lightstage.patterns && typeof args.lightstage.patterns.active !== 'undefined') ? args.lightstage.patterns.active : '-';
-                            layoutPreviewStats.innerHTML = `<span style="font-weight:600;color:#aad4f5">Light stage</span><br>Boards: ${boardCount}<br>Density: ${density}<br>Radius: ${radiusVal}<br>Shape: ${shapeVal}<br>Pattern: ${patternVal}`;
+                            layoutPreviewStats.innerHTML = `<span style="font-weight:600;color:#aad4f5">Light stage</span><br>Boards: ${boardCount}${boardTarget}<br>Density: ${density}<br>Radius: ${radiusVal}<br>Shape: ${shapeVal}<br>Pattern: ${patternVal}`;
                             layoutPreviewStats.style.left = `${layoutX - captionPad}px`;
                             layoutPreviewStats.style.top = `${layoutTop + layoutSize / 2}px`;
                             layoutPreviewStats.style.right = 'auto';
@@ -4382,6 +4471,8 @@
         let lightboardRefs = [];
         let lightboardRefsVersion = 0;
         let lightStageBuildToken = 0;
+        let lightStageBuildInProgress = false;
+        let lightStageTargetBoardCount = 0;
         const maxBulkPointLights = 64;
         let axesHelper;
         let axesLabelGroup;
@@ -4743,6 +4834,7 @@
         args.controls.reset = function(){};
         args.controls.fullscreen = function(){window.open('https://jingyangcarl.github.io/');};
         args.projects.papercopilot = function(){window.open('https://papercopilot.com');};
+        window.__getLightStageCacheSnapshot = getLightStageCacheSnapshot;
 
         // Setup light stage
         init();
