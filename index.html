@@ -1929,6 +1929,18 @@
             });
         }
 
+        function canUseBulkPointLights() {
+            const count = lightboardRefs && lightboardRefs.length
+                ? lightboardRefs.length
+                : (lightboards && lightboards.children ? lightboards.children.length : 0);
+            return count > 0 && count <= maxBulkPointLights;
+        }
+
+        function setPhysicalLightVisible(ledLight, visible, bulk=false) {
+            if (!ledLight) return;
+            ledLight.visible = !!visible && (!bulk || canUseBulkPointLights());
+        }
+
         function generateGradientHDRI(width, height) {
             const colors = new Float32Array(width * height * 3);
             for (let y = 0; y < height; y++) {
@@ -2416,7 +2428,7 @@
                         leds.setXYZ(j, 0, 0, 0);
                     }
                     if (led_light) {
-                        led_light.visible = true;
+                        led_light.visible = false;
                         led_light.color.setRGB(0, 0, 0);
                         led_light.intensity = 0;
                     }
@@ -2455,19 +2467,23 @@
                 }
 
                 if (led_light) {
-                    led_light.visible = true;
+                    setPhysicalLightVisible(led_light, true, true);
                     led_light.color.setRGB(r, g, b);
                     led_light.intensity = lightIntensity;
                 }
                 leds.needsUpdate = true;
             });
+            if (!canUseBulkPointLights()) {
+                applyHDRIEnvMap({ preserveLightSources: true });
+            }
             hdriPreviewDirty = true;
             updateHdriPreviewCanvas();
             updateOlatPreviewCanvas();
         }
 
-        function applyHDRIEnvMap() {
+        function applyHDRIEnvMap(options={}) {
             if (!scene) return;
+            const preserveLightSources = !!(options && options.preserveLightSources);
             const patterns = args.lightstage.patterns;
             const pattern = patterns.hdriPattern || 'gradient';
             const isCustom = pattern === 'custom1' || pattern === 'custom2';
@@ -2534,7 +2550,9 @@
             if (illuminationSceneGrey) illuminationSceneGrey.environment = hdriEnvMapTexture;
             if (illuminationSceneChrome) illuminationSceneChrome.environment = hdriEnvMapTexture;
 
-            disableAllLightSources();
+            if (!preserveLightSources) {
+                disableAllLightSources();
+            }
             hdriPreviewDirty = true;
             updateHdriPreviewCanvas();
         }
@@ -2983,6 +3001,7 @@
                     for (let j = 0; j < leds.count; j++) {
                         leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
                     }
+                    setPhysicalLightVisible(ref.ledLight, false);
                     leds.needsUpdate = true;
                 });
             }
@@ -3004,34 +3023,34 @@
                     if (patterns.idx < n_all_white) {
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
-                            led_light.visible = true;
                         }
+                        setPhysicalLightVisible(led_light, true, true);
                     } else if (patterns.idx < (n_all_white + n_all_off)) {
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                            led_light.visible = false;
                         }
+                        setPhysicalLightVisible(led_light, false);
                     } else {
                         if (i+(n_all_white + n_all_off) == patterns.idx) {
                             for (let j = 0; j < leds.count; j++) {
                                 const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
                                 if (isWhite) {
                                     leds.setXYZ(j, olatIntensity * _olatColor.r, olatIntensity * _olatColor.g, olatIntensity * _olatColor.b);
-                                    led_light.visible = true;
                                 } else {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
                                 }
                             }
+                            setPhysicalLightVisible(led_light, true);
                         } else {
                             for (let j = 0; j < leds.count; j++) {
                                 const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
                                 if (isWhite) {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                                    led_light.visible = false;
                                 } else {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
                                 }
                             }
+                            setPhysicalLightVisible(led_light, false);
                         }
                     }
                     if (led_light) {
@@ -3118,9 +3137,9 @@
                         } else {
                             leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
                         }
-                        if (led_light) led_light.visible = true;
                     }
                     if (led_light) {
+                        setPhysicalLightVisible(led_light, true, true);
                         led_light.color.copy(_olatColor);
                         led_light.intensity = Math.max(0.0, olatIntensity);
                     }
@@ -3238,8 +3257,8 @@
                         if (!leds || !leds_init) return;
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                            led_light.visible = false;
                         }
+                        setPhysicalLightVisible(led_light, false);
                         leds.needsUpdate = true;
                     });
                     patterns.idx = -1; // set this to static, other dynamic patterns will automatically make this positive
@@ -4363,6 +4382,7 @@
         let lightboardRefs = [];
         let lightboardRefsVersion = 0;
         let lightStageBuildToken = 0;
+        const maxBulkPointLights = 64;
         let axesHelper;
         let axesLabelGroup;
         let axesLabelElements = [];
