@@ -141,6 +141,10 @@
         function init() {
             // Scene setup
             scene = new THREE.Scene();
+            scene.add(new THREE.HemisphereLight(0xffffff, 0x202040, 0.65));
+            const keyLight = new THREE.DirectionalLight(0xffffff, 1.1);
+            keyLight.position.set(1.5, 2.0, 3.0);
+            scene.add(keyLight);
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.z = 2.5;
             cameraObject = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
@@ -651,6 +655,9 @@
 
             let gui_render = gui.addFolder('Render');
             gui_render.open();
+            gui_render.add(args.render, 'showStats').name('Show FPS').onChange(v => {
+                if (stats && stats.dom) stats.dom.style.display = v ? 'block' : 'none';
+            }).listen();
             gui_render.add(args.render, 'showAxis').name('Show Axis').onChange(v => {
                 if (axesHelper) axesHelper.visible = v;
                 if (axesLabelGroup) axesLabelGroup.visible = v;
@@ -806,6 +813,11 @@
 
             let gui_illumination = gui_render.addFolder('Illumination');
             // gui_illumination.open();
+            gui_illumination.add( args.render.lighting, 'physicalPointLights').name('Physical Point Lights').onChange(() => {
+                args.lightstage.patterns.idx = 0;
+                hdriDirty = true;
+                olatPreviewDirty = true;
+            }).listen();
             gui_illumination.add( args.render.sideRender, 'illuminationView', { 'Selected Camera': 'selected', 'Perspective Camera': 'overall' } ).name('Illumination Coords').listen();
 
             let gui_save = gui_render.addFolder('Save');
@@ -838,6 +850,7 @@
 
         function setupStats() {
             stats = new Stats();
+            stats.dom.style.display = args.render.showStats ? 'block' : 'none';
             document.body.appendChild(stats.dom);
         }
 
@@ -1292,6 +1305,7 @@
             hdriDirty = true;
             hdriAssignmentDirty = true;
             hdriBaseColorsDirty = true;
+            olatPreviewDirty = true;
             rebuildLightboardRefs();
 
         }
@@ -1845,6 +1859,15 @@
             }
         }
 
+        function physicalPointLightsEnabled() {
+            return !!(args && args.render && args.render.lighting && args.render.lighting.physicalPointLights);
+        }
+
+        function setLedPointLightVisible(ledLight, isVisible) {
+            if (!ledLight) return;
+            ledLight.visible = isVisible && physicalPointLightsEnabled();
+        }
+
         function disableAllLightSources() {
             if (!lightboardRefs || lightboardRefs.length === 0) return;
             lightboardRefs.forEach((ref) => {
@@ -2180,6 +2203,7 @@
                     toCacheEntry(imgVista, false, 'custom1');
                     hdriDirty = true;
                     hdriPreviewDirty = true;
+                    olatPreviewDirty = true;
                     hdriBaseColorsDirty = true;
                 },
                 () => {
@@ -2189,6 +2213,7 @@
                             toCacheEntry(imgFallback, false, 'custom1');
                             hdriDirty = true;
                             hdriPreviewDirty = true;
+                            olatPreviewDirty = true;
                             hdriBaseColorsDirty = true;
                         },
                         () => {
@@ -2204,6 +2229,7 @@
                     toCacheEntry(imgSample, true, 'custom2');
                     hdriDirty = true;
                     hdriPreviewDirty = true;
+                    olatPreviewDirty = true;
                     hdriBaseColorsDirty = true;
                 },
                 () => {
@@ -2300,6 +2326,7 @@
                 else hdriCache = generateGradientHDRI(width, height);
                 if (!isCustom || !customHdriCache[pattern]) hdriCache.pattern = pattern;
                 hdriPreviewDirty = true;
+                olatPreviewDirty = true;
                 hdriBaseColorsDirty = true;
             }
 
@@ -2349,13 +2376,14 @@
                         leds.setXYZ(j, 0, 0, 0);
                     }
                     if (led_light) {
-                        led_light.visible = true;
+                        setLedPointLightVisible(led_light, false);
                         led_light.color.setRGB(0, 0, 0);
                         led_light.intensity = 0;
                     }
                     leds.needsUpdate = true;
                 });
                 hdriPreviewDirty = true;
+                olatPreviewDirty = true;
                 updateHdriPreviewCanvas();
                 updateOlatPreviewCanvas();
                 return;
@@ -2388,13 +2416,14 @@
                 }
 
                 if (led_light) {
-                    led_light.visible = true;
+                    setLedPointLightVisible(led_light, true);
                     led_light.color.setRGB(r, g, b);
                     led_light.intensity = lightIntensity;
                 }
                 leds.needsUpdate = true;
             });
             hdriPreviewDirty = true;
+            olatPreviewDirty = true;
             updateHdriPreviewCanvas();
             updateOlatPreviewCanvas();
         }
@@ -2428,6 +2457,7 @@
                 }
                 if (!isCustom || !customEntry) hdriCache.pattern = pattern;
                 hdriPreviewDirty = true;
+                olatPreviewDirty = true;
             }
 
             const intensity = (typeof patterns.hdriIntensity === 'number')
@@ -2469,6 +2499,7 @@
 
             disableAllLightSources();
             hdriPreviewDirty = true;
+            olatPreviewDirty = true;
             updateHdriPreviewCanvas();
         }
 
@@ -2535,29 +2566,29 @@
 
         function preloadGlbAssets() {
             const glbPaths = ['static/mesh/goose.glb', 'static/mesh/cat_and_seal.glb', 'static/mesh/stanford_bunny.glb'];
-            glbPaths.forEach((path) => {
+            const preloadNext = (index = 0) => {
+                if (index >= glbPaths.length) return;
+                const path = glbPaths[index];
                 requestGlbRoot(path).then((root) => {
-                    // Pre-upload all textures to the GPU to avoid decode stalls on first render
-                    root.traverse((child) => {
-                        if (!child.isMesh || !child.material) return;
-                        const mats = Array.isArray(child.material) ? child.material : [child.material];
-                        mats.forEach((mat) => {
-                            const texProps = [
-                                'map', 'normalMap', 'roughnessMap', 'metalnessMap',
-                                'aoMap', 'emissiveMap', 'envMap', 'lightMap',
-                                'alphaMap', 'specularMap', 'displacementMap',
-                            ];
-                            texProps.forEach((prop) => {
-                                if (mat[prop] && mat[prop].isTexture) {
-                                    renderer.initTexture(mat[prop]);
-                                }
-                            });
-                        });
-                    });
+                    // Keep idle preloading CPU/network-only; GPU texture upload can stall interaction.
                 }).catch((err) => {
                     console.warn(`Preload failed for ${path}`, err);
+                }).finally(() => {
+                    window.setTimeout(() => preloadNext(index + 1), 500);
                 });
-            });
+            };
+            preloadNext();
+        }
+
+        function scheduleGlbPreload() {
+            if (hasScheduledGlbPreload) return;
+            hasScheduledGlbPreload = true;
+            const preload = () => preloadGlbAssets();
+            if ('requestIdleCallback' in window) {
+                window.requestIdleCallback(preload, { timeout: 4000 });
+            } else {
+                window.setTimeout(preload, 2500);
+            }
         }
 
         function setupGlbMesh(path) {
@@ -2605,18 +2636,21 @@
                 preparedMesh.userData.importedMaterials = Array.isArray(material) ? material.slice() : material;
                 finalizeMesh(preparedMesh);
                 setLoadingVisible(false);
+                scheduleGlbPreload();
             }).catch((err) => {
                 console.error(`Failed to load GLB model: ${path}`);
                 if (err) console.error(err);
                 setLoadingVisible(false);
+                scheduleGlbPreload();
             });
         }
 
         function applyMetalPreset() {
             args.lightstage.object.material.useImportedTextures = false;
-            const metalPreset = getMaterialPresetValues('metal');
-            Object.assign(args.lightstage.object.material.brdf, metalPreset);
-            args.lightstage.object.material.preset = 'metal';
+            const presetName = physicalPointLightsEnabled() ? 'metal' : 'matte';
+            const preset = getMaterialPresetValues(presetName);
+            Object.assign(args.lightstage.object.material.brdf, preset);
+            args.lightstage.object.material.preset = presetName;
         }
 
         function applyImportedTexturePreset() {
@@ -2933,12 +2967,12 @@
                     if (patterns.idx < n_all_white) {
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
-                            led_light.visible = true;
+                            setLedPointLightVisible(led_light, true);
                         }
                     } else if (patterns.idx < (n_all_white + n_all_off)) {
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                            led_light.visible = false;
+                            setLedPointLightVisible(led_light, false);
                         }
                     } else {
                         if (i+(n_all_white + n_all_off) == patterns.idx) {
@@ -2946,7 +2980,7 @@
                                 const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
                                 if (isWhite) {
                                     leds.setXYZ(j, olatIntensity * _olatColor.r, olatIntensity * _olatColor.g, olatIntensity * _olatColor.b);
-                                    led_light.visible = true;
+                                    setLedPointLightVisible(led_light, true);
                                 } else {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
                                 }
@@ -2956,7 +2990,7 @@
                                 const isWhite = (leds_init[3*j] === leds_init[3*j+1] && leds_init[3*j+1] === leds_init[3*j+2]);
                                 if (isWhite) {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                                    led_light.visible = false;
+                                    setLedPointLightVisible(led_light, false);
                                 } else {
                                     leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
                                 }
@@ -3047,7 +3081,7 @@
                         } else {
                             leds.setXYZ(j, leds_init[3*j], leds_init[3*j+1], leds_init[3*j+2]);
                         }
-                        if (led_light) led_light.visible = true;
+                        setLedPointLightVisible(led_light, true);
                     }
                     if (led_light) {
                         led_light.color.copy(_olatColor);
@@ -3167,7 +3201,7 @@
                         if (!leds || !leds_init) return;
                         for (let j = 0; j < leds.count; j++) {
                             leds.setXYZ(j, off*leds_init[3*j], off*leds_init[3*j+1], off*leds_init[3*j+2]);
-                            led_light.visible = false;
+                            setLedPointLightVisible(led_light, false);
                         }
                         leds.needsUpdate = true;
                     });
@@ -3207,7 +3241,7 @@
         // Animation loop
         function animate() {
             render();
-            stats.update();
+            if (stats) stats.update();
             controls.update();
         }
 
@@ -3264,7 +3298,9 @@
             }
 
             updatePattern();
-            syncIlluminationLights();
+            if (args.render.sideRender.show && args.render.sideRender.showIllumination) {
+                syncIlluminationLights();
+            }
 
             // inset scene
             // debugger;
@@ -3967,19 +4003,12 @@
         function updateOlatPreviewCanvas() {
             if (!olatPreviewCanvas || !olatPreviewCtx || !olatPreviewOffscreen || !olatPreviewOffCtx) return;
             if (!lightboards || lightboards.children.length === 0) return;
-            const _olatPattern = args.lightstage.patterns.hdriPattern || 'gradient';
+            const patterns = args.lightstage.patterns;
+            const _olatPattern = patterns.hdriPattern || 'gradient';
             const _olatIsCustom = _olatPattern === 'custom1' || _olatPattern === 'custom2';
-            const width = _olatIsCustom ? 512 : (args.lightstage.patterns.hdriResolution || 128);
+            const width = _olatIsCustom ? 512 : (patterns.hdriResolution || 128);
             const height = _olatIsCustom ? 256 : Math.floor(width / 2);
             if (width <= 0 || height <= 0) return;
-            olatPreviewOffscreen.width = width;
-            olatPreviewOffscreen.height = height;
-
-            const imgData = olatPreviewOffCtx.createImageData(width, height);
-            const data = imgData.data;
-            const off = 0.0;
-
-            const patterns = args.lightstage.patterns;
             const isHdriPhase = patterns.active === 'hdri' || (patterns.active === 'all' && allPhase === 'hdri');
             const isEnvMapPhase = patterns.active === 'hdri_envmap' || (patterns.active === 'all' && allPhase === 'hdri_envmap');
             const { mode, boardIndex } = getOlatPhaseInfo();
@@ -3999,6 +4028,34 @@
             const useMap = hdriAssignmentMap && hdriAssignmentWidth === width && hdriAssignmentHeight === height;
             const lightDirs = useMap ? null : lightboards.children.map(lb => lb.position.clone().normalize());
             const contrast = Math.max(0.01, patterns.hdriContrast || 1.0);
+            const nextSignature = [
+                width,
+                height,
+                patterns.active,
+                allPhase,
+                patterns.idx,
+                _olatPattern,
+                patterns.olatColor,
+                patterns.olatIntensity,
+                patterns.hdriIntensity,
+                patterns.hdriLightIntensity,
+                patterns.hdriContrast,
+                patterns.hdriHorizontalRotation,
+                patterns.hdriVerticalRotation,
+                useMap ? 'map' : 'nomap',
+                lightboardRefsVersion
+            ].join('|');
+
+            if (!olatPreviewDirty && !hdriAssignmentDirty && !hdriBaseColorsDirty && olatPreviewSignature === nextSignature) {
+                return;
+            }
+
+            olatPreviewOffscreen.width = width;
+            olatPreviewOffscreen.height = height;
+
+            const imgData = olatPreviewOffCtx.createImageData(width, height);
+            const data = imgData.data;
+            const off = 0.0;
 
             if (isHdriPhase && useMap && hdriBaseColorsDirty) {
                 buildHdriBaseColors(width, height);
@@ -4021,6 +4078,8 @@
                     }
                 }
                 olatPreviewOffCtx.putImageData(imgData, 0, 0);
+                olatPreviewDirty = false;
+                olatPreviewSignature = nextSignature;
                 return;
             }
 
@@ -4073,6 +4132,8 @@
             }
 
             olatPreviewOffCtx.putImageData(imgData, 0, 0);
+            olatPreviewDirty = false;
+            olatPreviewSignature = nextSignature;
         }
 
         function setupBrdfPreview() {
@@ -4339,6 +4400,7 @@
         let objectMeshStats = { vertices: 0, faces: 0 };
         let glbSceneCache = new Map();
         let glbScenePromises = new Map();
+        let hasScheduledGlbPreload = false;
         let hdriCache = null;
         let hdriDirty = true;
         let hdriAssignmentMap = null;
@@ -4349,6 +4411,8 @@
         let hdriBaseColors = null;
         let hdriBaseColorsDirty = true;
         let hdriPreviewDirty = true;
+        let olatPreviewDirty = true;
+        let olatPreviewSignature = '';
         let hdriEnvMapTexture = null;
         let customHdriCache = { custom1: null, custom2: null };
         let brdfPreviewDirty = true;
@@ -4369,7 +4433,7 @@
             lightstage: {
                 shape: 'icosahedron',
                 radius: 1.5,
-                ledDensity: 5,
+                ledDensity: 2,
                 randomDrops: 0,
                 object: {
                     type: 'bunny',
@@ -4460,14 +4524,18 @@
                 fullscreen: function() {},
             },
             render: {
+                showStats: false,
                 showAxis: false,
+                lighting: {
+                    physicalPointLights: false,
+                },
                 save: {
                     transparentBackground: true,
                 },
                 rayCaster: {
                     radiusScalar: 1, // the radius scalar * lightstage.radius is the radius rays
                     rays: {
-                        count: 20,
+                        count: 12,
                         sphereScale: 0.01,
                         color: 0x444444,
                         maxNum: 3000,
@@ -4478,14 +4546,14 @@
                     helperDepth: 10,
                 },
                 sideRender: {
-                    show: true,
-                    showIllumination: true,
+                    show: false,
+                    showIllumination: false,
                     insetScalar: 3,
                     miniScalar: 10,
                     illuminationView: 'overall',
                 },
                 camera: {
-                    showCamera: true,
+                    showCamera: false,
                     cameraFar: 2,
                     cameraCount: 2,
                     cameraDistance: 0.6,
@@ -4659,7 +4727,6 @@
         if (infoDiv) infoDiv.style.display = args.projects.showTitle ? 'block' : 'none';
         setupStats();
         setupLightStage();
-        preloadGlbAssets();
         loadObject(args.lightstage.object.type);
         setupRayCaster();
         setupIlluminationPreview();
