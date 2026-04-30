@@ -2418,6 +2418,13 @@
             return count > 0 && count <= maxBulkPointLights;
         }
 
+        function getHdriOlatPointLightBudget() {
+            const count = lightboardRefs && lightboardRefs.length
+                ? lightboardRefs.length
+                : (lightboards && lightboards.children ? lightboards.children.length : 0);
+            return Math.max(0, Math.min(count, maxBulkPointLights));
+        }
+
         function setPhysicalLightVisible(ledLight, visible, bulk=false) {
             if (!ledLight) return;
             ledLight.visible = !!visible && (!bulk || canUseBulkPointLights());
@@ -2843,6 +2850,7 @@
 
         function applyHDRIPattern() {
             if (!lightboards || lightboards.children.length === 0) return;
+            clearHDRIEnvMap();
             const off = 0.1;
             const patterns = args.lightstage.patterns;
             const pattern = patterns.hdriPattern || 'gradient';
@@ -2909,6 +2917,7 @@
                 hdriBoardColors = new Float32Array(lightboards.children.length * 3);
             }
             if (!lightboardRefs || lightboardRefs.length === 0) return;
+            const rankedLights = [];
             if (intensity <= 0) {
                 hdriBoardColors.fill(0);
                 lightboardRefs.forEach((ref) => {
@@ -2961,14 +2970,27 @@
                 }
 
                 if (led_light) {
-                    setPhysicalLightVisible(led_light, true, true);
                     led_light.color.setRGB(r, g, b);
                     led_light.intensity = lightIntensity;
+                    led_light.visible = false;
                 }
+                rankedLights.push({
+                    index: i,
+                    brightness: (r * 0.2126 + g * 0.7152 + b * 0.0722) * lightIntensity,
+                });
                 leds.needsUpdate = true;
             });
-            if (!canUseBulkPointLights()) {
-                applyHDRIEnvMap({ preserveLightSources: true });
+            const lightBudget = getHdriOlatPointLightBudget();
+            if (lightBudget > 0) {
+                rankedLights
+                    .sort((a, b) => b.brightness - a.brightness)
+                    .slice(0, lightBudget)
+                    .forEach(({ index, brightness }) => {
+                        const ledLight = lightboardRefs[index] && lightboardRefs[index].ledLight;
+                        if (ledLight && brightness > 1e-5) {
+                            setPhysicalLightVisible(ledLight, true);
+                        }
+                    });
             }
             hdriPreviewDirty = true;
             olatPreviewDirty = true;
