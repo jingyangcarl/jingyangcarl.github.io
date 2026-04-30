@@ -138,8 +138,35 @@
             let dpr = 1;
             let running = true;
             let startTime = performance.now();
+            let finishRequested = false;
             let cachedOrderLength = 0;
             let cachedOrder = [];
+            const minBootPreviewMs = 2600;
+            const cacheReadyTimeoutMs = 3200;
+            const cacheUrl = 'static/cache/lightstage-icosahedron-r1_5-d5.js';
+
+            window.__LIGHTSTAGE_LAYOUT_CACHE_READY__ = window.__LIGHTSTAGE_LAYOUT_CACHE_READY__ || new Promise((resolve) => {
+                let settled = false;
+                let loadStarted = false;
+                const done = (ok) => {
+                    if (settled) return;
+                    settled = true;
+                    resolve(ok);
+                };
+                const loadCache = () => {
+                    if (loadStarted) return;
+                    loadStarted = true;
+                    const script = document.createElement('script');
+                    script.src = cacheUrl;
+                    script.async = true;
+                    script.onload = () => done(true);
+                    script.onerror = () => done(false);
+                    document.head.appendChild(script);
+                    window.setTimeout(() => done(false), cacheReadyTimeoutMs);
+                };
+                requestAnimationFrame(() => requestAnimationFrame(() => window.setTimeout(loadCache, 360)));
+                window.setTimeout(loadCache, 900);
+            });
 
             const fallbackPositions = (() => {
                 const positions = [];
@@ -307,12 +334,16 @@
             }
 
             window.__finishBootPreview = function () {
-                if (!running) return;
-                canvas.style.opacity = '0';
+                if (!running || finishRequested) return;
+                finishRequested = true;
+                const remaining = Math.max(0, minBootPreviewMs - (performance.now() - startTime));
                 window.setTimeout(() => {
-                    running = false;
-                    canvas.style.display = 'none';
-                }, 520);
+                    canvas.style.opacity = '0';
+                    window.setTimeout(() => {
+                        running = false;
+                        canvas.style.display = 'none';
+                    }, 520);
+                }, remaining);
             };
 
             resizeBootPreview();
@@ -331,7 +362,6 @@
           }
         }
       </script>
-    <script src="static/cache/lightstage-icosahedron-r1_5-d5.js"></script>
     <script type="module">
         
         import * as THREE from 'three';
@@ -5056,6 +5086,10 @@
         if (infoDiv) infoDiv.style.display = args.projects.showTitle ? 'block' : 'none';
         setupStats();
         loadObject(args.lightstage.object.type);
+        const lightStageCacheReady = window.__LIGHTSTAGE_LAYOUT_CACHE_READY__;
+        if (lightStageCacheReady && typeof lightStageCacheReady.then === 'function') {
+            await lightStageCacheReady;
+        }
         setupLightStage(false, { asyncBuild: true });
         setupRayCaster();
         setupIlluminationPreview();
