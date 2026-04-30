@@ -318,8 +318,9 @@
             }
 
             function getBootPreviewParticleCount(targetCount) {
-                const sizeBudget = Math.min(width || 1, height || 1) < 680 ? 1050 : 1850;
-                const areaBudget = Math.floor(Math.sqrt(Math.max(1, (width || 1) * (height || 1))) * 1.65);
+                const compactViewport = Math.min(width || 1, height || 1) < 680;
+                const sizeBudget = compactViewport ? 1750 : 3400;
+                const areaBudget = Math.floor(Math.sqrt(Math.max(1, (width || 1) * (height || 1))) * (compactViewport ? 2.15 : 2.75));
                 return Math.max(360, Math.min(targetCount, sizeBudget, areaBudget));
             }
 
@@ -457,9 +458,39 @@
                         points.push({ x: width * 0.5, y: height * 0.5, depth: 0.5, rim: 0.3, line: 'title', seed: hashUnit(i + 1) });
                     }
                 } else {
-                    const step = candidates.length / safeCount;
-                    for (let i = 0; i < safeCount; i++) {
-                        const candidate = candidates[Math.min(candidates.length - 1, Math.floor((i + 0.5) * step))];
+                    const titleCandidates = candidates.filter((candidate) => candidate.line === 'title');
+                    const subtitleCandidates = candidates.filter((candidate) => candidate.line === 'subtitle');
+                    const subtitleCount = subtitleCandidates.length
+                        ? Math.min(safeCount - 1, Math.max(1, Math.floor(safeCount * 0.32)))
+                        : 0;
+                    const titleCount = safeCount - subtitleCount;
+                    const addSamples = (source, count, offset) => {
+                        if (!count) return;
+                        const list = source.length ? source : candidates;
+                        const step = list.length / count;
+                        for (let j = 0; j < count; j++) {
+                            const pointIndex = offset + j;
+                            const candidate = list[Math.min(list.length - 1, Math.floor((j + 0.5) * step))];
+                            const seed = hashUnit((candidate.x + 19) * 12.9898 + (candidate.y + 31) * 78.233 + pointIndex * 0.37);
+                            const nx = (candidate.x / Math.max(1, textCanvas.width)) * 2 - 1;
+                            const ny = (candidate.y / Math.max(1, textCanvas.height)) * 2 - 1;
+                            const jitter = sampleStep * 0.08;
+                            points.push({
+                                x: originX + candidate.x + (seed - 0.5) * jitter,
+                                y: originY + candidate.y + (hashUnit(seed * 91.7 + pointIndex) - 0.5) * jitter,
+                                depth: clamp01(0.46 + (1 - Math.abs(nx)) * 0.22 - Math.abs(ny) * 0.08 + (seed - 0.5) * 0.18),
+                                rim: clamp01(0.2 + Math.abs(nx) * 0.28 + (1 - Math.abs(ny)) * 0.12 + seed * 0.16),
+                                line: candidate.line,
+                                reveal: candidate.reveal,
+                                seed,
+                            });
+                        }
+                    };
+                    addSamples(titleCandidates, titleCount, 0);
+                    addSamples(subtitleCandidates, subtitleCount, titleCount);
+                    while (points.length < safeCount) {
+                        const i = points.length;
+                        const candidate = candidates[Math.min(candidates.length - 1, Math.floor((i + 0.5) * candidates.length / safeCount))];
                         const seed = hashUnit((candidate.x + 19) * 12.9898 + (candidate.y + 31) * 78.233 + i * 0.37);
                         const nx = (candidate.x / Math.max(1, textCanvas.width)) * 2 - 1;
                         const ny = (candidate.y / Math.max(1, textCanvas.height)) * 2 - 1;
