@@ -1,0 +1,23 @@
+{
+  "images": [
+    {
+      "id": "light-stage-sample",
+      "title": "Shader Gallery",
+      "author": "Cinematic image stage",
+      "description": "Images become luminous relief art inside a filmic 3D gallery",
+      "src": "../static/img/sample.png",
+      "thumb": "../static/img/sample.png",
+      "crop": [0.19, 0.267, 0.215, 0.47],
+      "date": "2026-01-01"
+    },
+    {
+      "id": "vista",
+      "title": "Vista",
+      "author": "Dynamic showcase",
+      "description": "A still image re-lit as glowing sculpture with cinematic camera motion.",
+      "src": "../static/img/vista.jpg",
+      "thumb": "../static/img/vista.jpg",
+      "date": "2026-01-02"
+    }
+  ]
+}

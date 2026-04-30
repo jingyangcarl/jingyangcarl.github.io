@@ -3,49 +3,58 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Shader Museum</title>
+  <title>Image Cinema Gallery</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div id="app">
-    <div id="hud">
-      <div class="pill"><b>WASD</b> move · <b>Mouse</b> look · <b>E</b> inspect · <b>Esc</b> back</div>
-      <div id="hint" class="pill hidden"></div>
-    </div>
+    <header class="siteHeader">
+      <a class="brand" href="./">Shader Gallery</a>
+    </header>
 
-    <div id="overlay" class="overlay">
-      <div class="overlayCard">
-        <h1>Shader Museum</h1>
-        <p>
-          Click to enter. Walk a virtual gallery of real-time shader “paintings”.
-        </p>
-        <button id="enterBtn">Enter</button>
-        <div class="tiny">
-          Tip: If you see a blank painting, your GPU/browser may be blocking WebGL. Try Chrome/Edge.
+    <section class="copyPanel" aria-live="polite">
+      <h1 id="copyTitle">Shader Gallery</h1>
+      <p id="copyDescription">Images become luminous relief art inside a filmic 3D gallery</p>
+      <p id="copyAuthor">Cinematic image stage</p>
+    </section>
+
+    <div class="hud">
+      <div class="hudMeta">
+        <div id="shotLabel" class="shotLabel">Wide Shot</div>
+        <div id="artLabel" class="artLabel">Loading images</div>
+      </div>
+      <div class="hudControls">
+        <button id="settingsBtn" class="iconButton settingsBtn" type="button" aria-label="Controls" aria-expanded="false" aria-controls="settingsPanel">&#9881;</button>
+        <div id="settingsPanel" class="settingsPanel" aria-hidden="true" inert>
+          <label class="selectControl">
+            <span>Camera</span>
+            <select id="cameraSelect" aria-label="Camera">
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
+          <label class="selectControl">
+            <span>Gesture</span>
+            <select id="viewerSelect" aria-label="Gesture"></select>
+          </label>
         </div>
       </div>
     </div>
 
-    <div id="viewer" class="viewer hidden">
-      <div class="viewerTop">
-        <div>
-          <div id="viewerTitle" class="viewerTitle">Title</div>
-          <div id="viewerMeta" class="viewerMeta">Author</div>
-        </div>
-        <button id="viewerClose" class="btn">Back (Esc)</button>
-      </div>
-      <div id="viewerDesc" class="viewerDesc"></div>
-    </div>
+    <div id="filmStrip" class="filmStrip" aria-label="Loaded images"></div>
+    <input id="imageInput" class="imageInput" type="file" accept="image/*" multiple />
+    <div id="fade" class="fade"></div>
+    <div id="dropOverlay" class="dropOverlay">Drop images to add them to the cinema</div>
   </div>
-  
-    <script type="importmap">
+
+  <script type="importmap">
     {
-    "imports": {
+      "imports": {
         "three": "https://unpkg.com/three@0.182.0/build/three.module.js",
         "three/addons/": "https://unpkg.com/three@0.182.0/examples/jsm/"
+      }
     }
-    }
-    </script>
+  </script>
   <script type="module" src="./main.js"></script>
 </body>
 </html>

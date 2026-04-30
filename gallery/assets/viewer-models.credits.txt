@@ -1,0 +1,77 @@
+Viewer model sources
+
+- male-base-mesh.glb and neutral-base variants
+  Source: https://github.com/BoQsc/Godot-3D-Male-Base-Mesh
+  License: CC0, see male-base-mesh.license.txt
+
+- rocketbox-male-adult-01.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Male_Adult_01
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-male-sweater.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Male_Adult_02
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-male-denim.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Male_Adult_12
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-female-adult-01.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Female_Adult_01
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-female-leather.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Female_Adult_04
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-female-cardigan.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Female_Adult_09
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-female-skirt.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Female_Adult_15
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-business-male-01.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Business_Male_01
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-business-female.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Business_Female_01
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-medical-male.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Medical_Male_01
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-anim-thoughtful.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/blob/master/Assets/Animations/all_animations_max_motextr_static/f_gestic_thoughtful_01.max.fbx
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-anim-touch-face.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/blob/master/Assets/Animations/all_animations_max_motextr_static/f_idle_touch_face_01.max.fbx
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-anim-scratch-head.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/blob/master/Assets/Animations/all_animations_max_motextr_static/f_idle_scratch_head_01.max.fbx
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-anim-look-around.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/blob/master/Assets/Animations/all_animations_max_motextr_static/f_idle_look_around_02.max.fbx
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-anim-listen-relaxed.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/blob/master/Assets/Animations/all_animations_max_motextr_static/f_gestic_listen_relaxed_01.max.fbx
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-anim-self-assured.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/blob/master/Assets/Animations/all_animations_max_motextr_static/f_gestic_listen_self-assured_01.max.fbx
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-anim-shrug.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/blob/master/Assets/Animations/all_animations_max_motextr_static/f_gestic_shrug_01.max.fbx
+  License: MIT, see rocketbox.license.txt
+
+- rocketbox-anim-presentation.fbx
+  Source: https://github.com/microsoft/Microsoft-Rocketbox/blob/master/Assets/Animations/all_animations_max_motextr_static/f_gestic_presentation_right_01.max.fbx
+  License: MIT, see rocketbox.license.txt
