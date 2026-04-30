@@ -53,6 +53,17 @@
             z-index: 999 !important; /* TODO Solve this in HTML */
         }
 
+        #bootPreviewCanvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 5;
+            opacity: 1;
+            transition: opacity 0.45s ease;
+        }
+
         /* avoid empty links */
         .icon {
             display: inline-block;
@@ -113,6 +124,145 @@
         <b>The Algorithmic Aura (CVPR 2026 Art)</b><br/>
         <small><a href="https://jingyangcarl.com" target="_blank" rel="noopener">Jing Yang</a>'s Ph.D. with <a href="https://vgl.ict.usc.edu/LightStages/" target="_blank" rel="noopener">Light Stage</a> &nbsp;|&nbsp; Tweak this <a href="https://jingyangcarl.github.io" target="_blank" rel="noopener">virtual Light Stage</a> via <i style="color: lightgreen">Controls</i> →</small>
     </div>
+    <canvas id="bootPreviewCanvas" aria-hidden="true"></canvas>
+    <script>
+        (function () {
+            const canvas = document.getElementById('bootPreviewCanvas');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d', { alpha: true });
+            if (!ctx) return;
+
+            let width = 0;
+            let height = 0;
+            let dpr = 1;
+            let running = true;
+            let startTime = performance.now();
+            let cachedOrderLength = 0;
+            let cachedOrder = [];
+
+            const fallbackPositions = (() => {
+                const positions = [];
+                const count = 252;
+                const golden = Math.PI * (3 - Math.sqrt(5));
+                for (let i = 0; i < count; i++) {
+                    const y = 1 - (i / (count - 1)) * 2;
+                    const radius = Math.sqrt(Math.max(0, 1 - y * y));
+                    const theta = i * golden;
+                    positions.push([
+                        1.5 * Math.cos(theta) * radius,
+                        1.5 * y,
+                        1.5 * Math.sin(theta) * radius,
+                    ]);
+                }
+                return positions;
+            })();
+
+            function resizeBootPreview() {
+                dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+                width = window.innerWidth || 1;
+                height = window.innerHeight || 1;
+                canvas.width = Math.floor(width * dpr);
+                canvas.height = Math.floor(height * dpr);
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+
+            function getBootPositions() {
+                const caches = window.__LIGHTSTAGE_LAYOUT_CACHES__;
+                const cache = caches && caches['icosahedron-r1_5-d5'];
+                return cache && Array.isArray(cache.positions) && cache.positions.length
+                    ? cache.positions
+                    : fallbackPositions;
+            }
+
+            function getProgressiveOrder(count) {
+                if (cachedOrderLength === count && cachedOrder.length) return cachedOrder;
+                const order = [];
+                const seen = new Uint8Array(count);
+                let stride = 1;
+                while (stride < count) stride *= 2;
+                for (; stride >= 1; stride = Math.floor(stride / 2)) {
+                    for (let i = 0; i < count; i += stride) {
+                        if (seen[i]) continue;
+                        seen[i] = 1;
+                        order.push(i);
+                    }
+                }
+                cachedOrderLength = count;
+                cachedOrder = order;
+                return order;
+            }
+
+            function drawBootPreview(now) {
+                if (!running) return;
+
+                const positions = getBootPositions();
+                const order = getProgressiveOrder(positions.length);
+                const elapsed = (now - startTime) / 1000;
+                const revealCount = Math.min(
+                    positions.length,
+                    Math.max(12, Math.floor(18 + elapsed * 95))
+                );
+                const centerX = width * 0.5;
+                const centerY = height * 0.52;
+                const scale = Math.min(width, height) * 0.31;
+                const rotY = elapsed * 0.18;
+                const rotX = -0.22 + Math.sin(elapsed * 0.32) * 0.04;
+                const cosY = Math.cos(rotY);
+                const sinY = Math.sin(rotY);
+                const cosX = Math.cos(rotX);
+                const sinX = Math.sin(rotX);
+
+                ctx.clearRect(0, 0, width, height);
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+
+                for (let i = 0; i < revealCount; i++) {
+                    const p = positions[order[i]];
+                    const x0 = p[0];
+                    const y0 = p[1];
+                    const z0 = p[2];
+                    const x1 = x0 * cosY - z0 * sinY;
+                    const z1 = x0 * sinY + z0 * cosY;
+                    const y1 = y0 * cosX - z1 * sinX;
+                    const z2 = y0 * sinX + z1 * cosX;
+                    const perspective = 1.9 / (2.5 - z2);
+                    const x = centerX + x1 * scale * perspective;
+                    const y = centerY - y1 * scale * perspective;
+                    const depth = Math.max(0.25, Math.min(1, (z2 + 1.5) / 3));
+                    const localReveal = Math.max(0, Math.min(1, (elapsed * 95 - i + 18) / 10));
+                    const radius = (1.2 + depth * 2.8) * (0.45 + localReveal * 0.55);
+                    const alpha = Math.min(0.95, (0.18 + depth * 0.55) * localReveal);
+                    const channel = i % 6;
+                    const color = channel === 1 ? '255,80,70'
+                        : channel === 3 ? '80,255,130'
+                        : channel === 5 ? '80,130,255'
+                        : '235,245,255';
+
+                    ctx.beginPath();
+                    ctx.fillStyle = `rgba(${color},${alpha})`;
+                    ctx.arc(x, y, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+                requestAnimationFrame(drawBootPreview);
+            }
+
+            window.__finishBootPreview = function () {
+                if (!running) return;
+                canvas.style.opacity = '0';
+                window.setTimeout(() => {
+                    running = false;
+                    canvas.style.display = 'none';
+                }, 520);
+            };
+
+            resizeBootPreview();
+            window.addEventListener('resize', resizeBootPreview, { passive: true });
+            requestAnimationFrame(drawBootPreview);
+        })();
+    </script>
     <script type="importmap">
         {
           "imports": {
@@ -244,6 +394,7 @@
             loadingLabel.style.lineHeight = '20px';
             loadingLabel.style.pointerEvents = 'none';
             loadingLabel.style.display = 'none';
+            loadingLabel.style.zIndex = '20';
             document.body.appendChild(loadingLabel);
 
             hdriPreviewCanvas = document.createElement('canvas');
@@ -1406,6 +1557,10 @@
                     setupIlluminationPreview();
                 } else if (!reset && illuminationSceneGrey && illuminationSceneChrome && typeof setupIlluminationPreview === 'function') {
                     setupIlluminationPreview();
+                }
+
+                if (typeof window.__finishBootPreview === 'function') {
+                    window.__finishBootPreview();
                 }
             };
 
