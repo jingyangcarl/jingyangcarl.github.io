@@ -234,7 +234,7 @@
 
                 const positions = getBootPositions();
                 const order = getProgressiveOrder(positions.length);
-                const elapsed = (now - startTime) / 1000;
+                const elapsed = Math.max(0.42, (now - startTime) / 1000);
                 const revealCount = Math.min(
                     positions.length,
                     Math.max(56, Math.floor(64 + elapsed * 120))
@@ -303,7 +303,7 @@
 
             resizeBootPreview();
             window.addEventListener('resize', resizeBootPreview, { passive: true });
-            requestAnimationFrame(drawBootPreview);
+            drawBootPreview(performance.now());
         })();
     </script>
     <script type="importmap">
