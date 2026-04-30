@@ -17,12 +17,27 @@ const settingsBtn = document.getElementById("settingsBtn");
 const settingsPanel = document.getElementById("settingsPanel");
 const cameraSelect = document.getElementById("cameraSelect");
 const viewerSelect = document.getElementById("viewerSelect");
+const displaySelect = document.getElementById("displaySelect");
+const resolutionSelect = document.getElementById("resolutionSelect");
+const cropControls = document.getElementById("cropControls");
+const cropInputs = {
+  x: document.getElementById("cropX"),
+  y: document.getElementById("cropY"),
+  w: document.getElementById("cropW"),
+  h: document.getElementById("cropH"),
+};
 const copyTitle = document.getElementById("copyTitle");
 const copyDescription = document.getElementById("copyDescription");
 const copyAuthor = document.getElementById("copyAuthor");
 const copyPanel = document.querySelector(".copyPanel");
 
 const GALLERY_ITEM_LIMIT = 2;
+const RESOLUTION_OPTIONS = {
+  ultra: { maxTextureSize: 8192, segments: 1280, mobileSegments: 520 },
+  high: { maxTextureSize: 6144, segments: 920, mobileSegments: 400 },
+  standard: { maxTextureSize: 4096, segments: 640, mobileSegments: 300 },
+  performance: { maxTextureSize: 2048, segments: 360, mobileSegments: 220 },
+};
 
 const state = {
   items: [],
@@ -33,6 +48,9 @@ const state = {
   cutting: false,
   cutFlashUntil: 0,
   settingsOpen: false,
+  displayMode: "crop",
+  resolution: "ultra",
+  textureVersion: 0,
 };
 
 const localUrls = [];
@@ -156,10 +174,12 @@ const VIEWER_MODELS = [
     animationPhase: 0.44,
   },
 ];
-const queryViewerModelId = new URLSearchParams(window.location.search).get("viewer");
-let activeViewerModelId = VIEWER_MODELS.some((option) => option.id === queryViewerModelId)
-  ? queryViewerModelId
-  : VIEWER_MODELS[0].id;
+
+function randomViewerModelId() {
+  return VIEWER_MODELS[Math.floor(Math.random() * VIEWER_MODELS.length)]?.id || VIEWER_MODELS[0].id;
+}
+
+let activeViewerModelId = randomViewerModelId();
 let viewerLoadToken = 0;
 const isMobileViewport = window.matchMedia("(max-width: 760px)").matches;
 const renderPixelRatio = Math.min(window.devicePixelRatio || 1, isMobileViewport ? 1.25 : 1.5);
@@ -193,6 +213,14 @@ const activeX = -2.08;
 const surfaceZ = -5.55;
 const surfaceY = 1.92;
 const surfaceSize = 3.62;
+const minDisplayAspect = 0.52;
+const maxDisplayAspect = 2.18;
+const activeMaxWidth = surfaceSize * 1.48;
+const activeMaxHeight = surfaceSize;
+const previewSurfaceSize = 1.62;
+const previewBackSize = 1.85;
+const previewMaxWidth = 2.42;
+const previewMaxHeight = 1.75;
 const viewerX = activeX + 0.4;
 const viewerZ = -3.86;
 
@@ -491,8 +519,22 @@ const shots = [
 const cameraPathPoint = new THREE.Vector3();
 const cameraFocusPoint = new THREE.Vector3();
 
+function resolutionOption() {
+  return RESOLUTION_OPTIONS[state.resolution] || RESOLUTION_OPTIONS.ultra;
+}
+
+function activeReliefSegments() {
+  const option = resolutionOption();
+  return isMobileViewport ? option.mobileSegments : option.segments;
+}
+
+function makeActiveSurfaceGeometry() {
+  const segments = activeReliefSegments();
+  return new THREE.PlaneGeometry(surfaceSize, surfaceSize, segments, segments);
+}
+
 const activeMaterial = makeReliefMaterial(1);
-const activeSurface = new THREE.Mesh(new THREE.PlaneGeometry(surfaceSize, surfaceSize, 190, 190), activeMaterial);
+const activeSurface = new THREE.Mesh(makeActiveSurfaceGeometry(), activeMaterial);
 activeSurface.position.set(activeX, surfaceY, surfaceZ + 0.04);
 activeSurface.castShadow = true;
 activeSurface.receiveShadow = true;
@@ -639,7 +681,7 @@ function normalizeImage(raw, baseUrl, index) {
     date: data.date || "",
     order: Number.isFinite(data.order) ? data.order : index,
     texture: fallbackTexture,
-    aspect: 16 / 9,
+    aspect: Number.isFinite(Number(data.aspect)) && Number(data.aspect) > 0 ? Number(data.aspect) : 16 / 9,
   };
 }
 
@@ -684,7 +726,11 @@ function configureTexture(texture) {
   return texture;
 }
 
-function drawBitmapToCanvas(bitmap, maxSize = 2048) {
+function textureMaxSize() {
+  return Math.min(resolutionOption().maxTextureSize, renderer.capabilities.maxTextureSize || 4096);
+}
+
+function drawBitmapToCanvas(bitmap, maxSize = textureMaxSize()) {
   const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
@@ -708,7 +754,7 @@ function makeThumbDataUrl(canvas) {
   return thumb.toDataURL("image/jpeg", 0.82);
 }
 
-async function loadCanvasTexture(src) {
+async function loadCanvasTexture(src, maxSize = textureMaxSize()) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 9000);
 
@@ -717,7 +763,7 @@ async function loadCanvasTexture(src) {
     if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
     const blob = await response.blob();
     const bitmap = await createImageBitmap(blob);
-    const canvas = drawBitmapToCanvas(bitmap);
+    const canvas = drawBitmapToCanvas(bitmap, maxSize);
     bitmap.close?.();
     return {
       texture: configureTexture(new THREE.CanvasTexture(canvas)),
@@ -758,30 +804,107 @@ function makeFallbackTexture() {
   return configureTexture(new THREE.CanvasTexture(canvas));
 }
 
-async function loadTexture(item) {
+async function loadTexture(item, textureVersion = state.textureVersion) {
+  const maxSize = textureMaxSize();
   try {
-    const loaded = await loadCanvasTexture(item.src);
+    const loaded = await loadCanvasTexture(item.src, maxSize);
+    if (textureVersion !== state.textureVersion) {
+      loaded.texture.dispose();
+      return item;
+    }
+    const previousTexture = item.texture;
     item.texture = loaded.texture;
     item.aspect = loaded.aspect;
     item.thumbData = loaded.thumbData;
+    item.textureMaxSize = maxSize;
     item.loaded = true;
+    if (previousTexture && previousTexture !== fallbackTexture && previousTexture !== item.texture) {
+      previousTexture.dispose();
+    }
   } catch {
+    if (textureVersion !== state.textureVersion) return item;
+    const previousTexture = item.texture;
     item.texture = fallbackTexture;
     item.aspect = 16 / 9;
+    item.textureMaxSize = maxSize;
     item.loaded = false;
+    if (previousTexture && previousTexture !== fallbackTexture) previousTexture.dispose();
   }
   return item;
 }
 
-function cropAspect(item) {
-  const crop = item?.crop || [0, 0, 1, 1];
-  return (item?.aspect || 16 / 9) * (crop[2] || 1) / (crop[3] || 1);
+function boundedCrop(rawCrop) {
+  const crop = normalizeCrop(rawCrop);
+  const width = THREE.MathUtils.clamp(Number.isFinite(crop[2]) ? crop[2] : 1, 0.05, 1);
+  const height = THREE.MathUtils.clamp(Number.isFinite(crop[3]) ? crop[3] : 1, 0.05, 1);
+  const x = THREE.MathUtils.clamp(Number.isFinite(crop[0]) ? crop[0] : 0, 0, 1 - width);
+  const y = THREE.MathUtils.clamp(Number.isFinite(crop[1]) ? crop[1] : 0, 0, 1 - height);
+  return [x, y, width, height];
 }
 
-function applyItemToMaterial(material, item) {
+function displayCropForItem(item) {
+  if (!item || state.displayMode === "full") return [0, 0, 1, 1];
+  return boundedCrop(item.crop);
+}
+
+function cropAspect(item) {
+  const crop = displayCropForItem(item);
+  const aspect = Number.isFinite(item?.aspect) && item.aspect > 0 ? item.aspect : 16 / 9;
+  const cropWidth = Number.isFinite(crop[2]) && crop[2] > 0 ? crop[2] : 1;
+  const cropHeight = Number.isFinite(crop[3]) && crop[3] > 0 ? crop[3] : 1;
+  return aspect * cropWidth / cropHeight;
+}
+
+function displayDimensionsForItem(item, maxWidth, maxHeight) {
+  const aspect = THREE.MathUtils.clamp(cropAspect(item), minDisplayAspect, maxDisplayAspect);
+  let width = maxHeight * aspect;
+  let height = maxHeight;
+  if (width > maxWidth) {
+    width = maxWidth;
+    height = maxWidth / aspect;
+  }
+  return { width, height, aspect: width / height };
+}
+
+function setObjectBaseScale(object, x, y, z = 1) {
+  if (!object.userData.baseScale) object.userData.baseScale = new THREE.Vector3(1, 1, 1);
+  object.userData.baseScale.set(x, y, z);
+  object.scale.copy(object.userData.baseScale);
+}
+
+function pulseObjectScale(object, pulse) {
+  const base = object.userData.baseScale || { x: 1, y: 1, z: 1 };
+  object.scale.set(base.x * pulse, base.y * pulse, base.z * pulse);
+}
+
+function applyActiveArtworkLayout(item) {
+  const dimensions = displayDimensionsForItem(item, activeMaxWidth, activeMaxHeight);
+  const surfaceScaleX = dimensions.width / surfaceSize;
+  const surfaceScaleY = dimensions.height / surfaceSize;
+
+  setObjectBaseScale(activeSurface, surfaceScaleX, surfaceScaleY);
+  setObjectBaseScale(slabCore, surfaceScaleX, surfaceScaleY);
+  setObjectBaseScale(edgeFrame, surfaceScaleX, surfaceScaleY);
+  setObjectBaseScale(aura, surfaceScaleX, surfaceScaleY);
+  setObjectBaseScale(reflection, surfaceScaleX, Math.max(surfaceScaleY, 0.74));
+  setObjectBaseScale(floorGlow, Math.max(surfaceScaleX, 0.74), 1);
+  setObjectBaseScale(mist, Math.max(surfaceScaleX, 0.82), Math.max(surfaceScaleY, 0.82));
+  return dimensions;
+}
+
+function applyPreviewLayout(preview, item) {
+  const dimensions = displayDimensionsForItem(item, previewMaxWidth, previewMaxHeight);
+  preview.surface.scale.set(dimensions.width / previewSurfaceSize, dimensions.height / previewSurfaceSize, 1);
+  preview.back.scale.set(dimensions.width / previewBackSize, dimensions.height / previewBackSize, 1);
+  preview.material.uniforms.uPlaneAspect.value = dimensions.aspect;
+  return dimensions;
+}
+
+function applyItemToMaterial(material, item, planeAspect = cropAspect(item)) {
   material.uniforms.uMap.value = item?.texture || fallbackTexture;
-  material.uniforms.uCrop.value.set(...(item?.crop || [0, 0, 1, 1]));
+  material.uniforms.uCrop.value.set(...displayCropForItem(item));
   material.uniforms.uImageAspect.value = cropAspect(item);
+  if (material.uniforms.uPlaneAspect) material.uniforms.uPlaneAspect.value = planeAspect;
 }
 
 function makeReliefMaterial(active = 1) {
@@ -946,7 +1069,7 @@ function createPreviewSurface(x, y, z, rotationY) {
   const surface = new THREE.Mesh(new THREE.PlaneGeometry(1.62, 1.62, 70, 70), makeGhostMaterial());
   surface.position.z = 0.02;
   group.add(back, surface);
-  return { group, surface, material: surface.material };
+  return { group, back, surface, material: surface.material };
 }
 
 function buildRoom() {
@@ -1047,9 +1170,6 @@ function setupViewerSelect() {
   viewerSelect.value = activeViewerModelId;
   viewerSelect.addEventListener("change", () => {
     activeViewerModelId = viewerSelect.value;
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set("viewer", activeViewerModelId);
-    window.history.replaceState(null, "", nextUrl);
     loadViewerModel(activeViewerModelId);
   });
 }
@@ -1307,11 +1427,17 @@ function updateMaterials() {
   if (copyTitle) copyTitle.textContent = active.title || "Untitled";
   if (copyDescription) copyDescription.textContent = formatCopyDescription(active.description);
   if (copyAuthor) copyAuthor.textContent = active.author || "Unknown";
-  applyItemToMaterial(activeMaterial, active);
-  applyItemToMaterial(reflection.material, active);
-  applyItemToMaterial(leftPreview.material, itemAt(-1));
-  applyItemToMaterial(rightPreview.material, itemAt(1));
-  applyItemToMaterial(farPreview.material, itemAt(2));
+  const activeDimensions = applyActiveArtworkLayout(active);
+  applyItemToMaterial(activeMaterial, active, activeDimensions.aspect);
+  applyItemToMaterial(reflection.material, active, activeDimensions.aspect);
+
+  const leftItem = itemAt(-1);
+  const rightItem = itemAt(1);
+  const farItem = itemAt(2);
+  applyItemToMaterial(leftPreview.material, leftItem, applyPreviewLayout(leftPreview, leftItem).aspect);
+  applyItemToMaterial(rightPreview.material, rightItem, applyPreviewLayout(rightPreview, rightItem).aspect);
+  applyItemToMaterial(farPreview.material, farItem, applyPreviewLayout(farPreview, farItem).aspect);
+  updateCropControls();
 
   const activeIndex = normalizeGalleryIndex(state.currentIndex);
   filmStrip.querySelectorAll(".imageThumb").forEach((button, index) => {
@@ -1359,9 +1485,51 @@ function markPointerActive() {
   pointerIdleTimer = window.setTimeout(() => setPointerActive(false), 1800);
 }
 
+function updateDisplayControl() {
+  if (displaySelect) displaySelect.value = state.displayMode;
+  settingsPanel?.classList.toggle("isFullDisplay", state.displayMode === "full");
+}
+
+function updateResolutionControl() {
+  if (resolutionSelect) resolutionSelect.value = state.resolution;
+}
+
+function updateCropControls() {
+  const active = activeItem();
+  const crop = boundedCrop(active?.crop);
+  const disabled = !active || state.displayMode === "full";
+  const hidden = state.displayMode === "full";
+
+  updateDisplayControl();
+  Object.entries(cropInputs).forEach(([key, input], index) => {
+    if (!input) return;
+    input.value = String(crop[index]);
+    input.disabled = disabled;
+    input.setAttribute("aria-disabled", String(disabled));
+  });
+  cropControls?.setAttribute("aria-disabled", String(disabled));
+  cropControls?.setAttribute("aria-hidden", String(hidden));
+}
+
+function updateActiveCropFromControls() {
+  const active = activeItem();
+  if (!active) return;
+
+  state.displayMode = "crop";
+  active.crop = boundedCrop([cropInputs.x?.value, cropInputs.y?.value, cropInputs.w?.value, cropInputs.h?.value]);
+  updateDisplayControl();
+  updateMaterials();
+}
+
 function updateCameraControl() {
   if (!cameraSelect) return;
   cameraSelect.value = state.cinematic ? "on" : "off";
+}
+
+function updateReliefResolution() {
+  const previousGeometry = activeSurface.geometry;
+  activeSurface.geometry = makeActiveSurfaceGeometry();
+  previousGeometry.dispose();
 }
 
 function cutTo(nextShotIndex, nextArtIndex = state.currentIndex) {
@@ -1425,8 +1593,10 @@ function renderFilmStrip() {
 }
 
 function hydrateImages(items) {
+  const textureVersion = state.textureVersion;
   items.forEach((item) => {
-    loadTexture(item).then(() => {
+    loadTexture(item, textureVersion).then(() => {
+      if (textureVersion !== state.textureVersion) return;
       updateMaterials();
       renderFilmStrip();
     });
@@ -1590,8 +1760,8 @@ function animate() {
   animateHumanThinkingPose(person, elapsed);
   activeSurface.position.z = surfaceZ + 0.04 + Math.sin(elapsed * 0.55) * 0.018 * cinematicEnergy;
   activeSurface.rotation.z = Math.sin(elapsed * 0.19) * 0.004 * cinematicEnergy;
-  activeSurface.scale.setScalar(1 + Math.sin(elapsed * 0.72) * 0.006 * cinematicEnergy);
-  edgeFrame.scale.setScalar(1 + Math.sin(elapsed * 0.72) * 0.004);
+  pulseObjectScale(activeSurface, 1 + Math.sin(elapsed * 0.72) * 0.006 * cinematicEnergy);
+  pulseObjectScale(edgeFrame, 1 + Math.sin(elapsed * 0.72) * 0.004);
   edgeFrame.children.forEach((child, index) => {
     child.material.opacity = child.userData.baseOpacity * (0.82 + Math.sin(elapsed * 1.4 + index) * 0.12);
   });
@@ -1621,6 +1791,25 @@ cameraSelect?.addEventListener("change", () => {
   state.cinematic = cameraSelect.value === "on";
   updateCameraControl();
   state.shotStartedAt = performance.now();
+});
+
+displaySelect?.addEventListener("change", () => {
+  state.displayMode = displaySelect.value === "full" ? "full" : "crop";
+  updateMaterials();
+});
+
+resolutionSelect?.addEventListener("change", () => {
+  const nextResolution = resolutionSelect.value;
+  if (!RESOLUTION_OPTIONS[nextResolution] || nextResolution === state.resolution) return;
+  state.resolution = nextResolution;
+  state.textureVersion += 1;
+  updateResolutionControl();
+  updateReliefResolution();
+  hydrateImages(galleryItems());
+});
+
+Object.values(cropInputs).forEach((input) => {
+  input?.addEventListener("input", updateActiveCropFromControls);
 });
 
 imageInput?.addEventListener("change", (event) => {
@@ -1694,6 +1883,7 @@ async function init() {
   shotLabel.textContent = shots[state.shotIndex].name;
   updateShotChrome();
   updateCameraControl();
+  updateResolutionControl();
   setSettingsOpen(false);
   renderFilmStrip();
   camera.fov = shots[state.shotIndex].fovFrom || camera.fov;

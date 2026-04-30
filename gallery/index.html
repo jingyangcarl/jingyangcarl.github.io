@@ -37,6 +37,40 @@
             <span>Gesture</span>
             <select id="viewerSelect" aria-label="Gesture"></select>
           </label>
+          <label class="selectControl">
+            <span>Display</span>
+            <select id="displaySelect" aria-label="Display">
+              <option value="crop">Crop</option>
+              <option value="full">Full image</option>
+            </select>
+          </label>
+          <label class="selectControl">
+            <span>Resolution</span>
+            <select id="resolutionSelect" aria-label="Resolution">
+              <option value="ultra">Ultra</option>
+              <option value="high">High</option>
+              <option value="standard">Standard</option>
+              <option value="performance">Performance</option>
+            </select>
+          </label>
+          <div id="cropControls" class="cropControls">
+            <label>
+              <span>X</span>
+              <input id="cropX" type="range" min="0" max="1" step="0.001" aria-label="Crop X" />
+            </label>
+            <label>
+              <span>Y</span>
+              <input id="cropY" type="range" min="0" max="1" step="0.001" aria-label="Crop Y" />
+            </label>
+            <label>
+              <span>W</span>
+              <input id="cropW" type="range" min="0.05" max="1" step="0.001" aria-label="Crop width" />
+            </label>
+            <label>
+              <span>H</span>
+              <input id="cropH" type="range" min="0.05" max="1" step="0.001" aria-label="Crop height" />
+            </label>
+          </div>
         </div>
       </div>
     </div>
