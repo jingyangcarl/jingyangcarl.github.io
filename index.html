@@ -3041,6 +3041,8 @@
             setupGlbMesh('static/mesh/stanford_bunny.glb');
         }
 
+        const glbLoadTimeoutMs = 9000;
+
         function requestGlbRoot(path) {
             if (glbSceneCache.has(path)) {
                 return Promise.resolve(glbSceneCache.get(path));
@@ -3096,9 +3098,26 @@
             }
         }
 
+        function setupFallbackMeshForGlb(path, reason) {
+            console.warn(`Using fallback mesh for ${path}: ${reason}`);
+            const fallback = createPrimitiveMesh('sphere');
+            fallback.userData.isModelFallback = true;
+            fallback.userData.failedModelPath = path;
+            finalizeMesh(fallback);
+        }
+
         function setupGlbMesh(path) {
+            const loadToken = ++modelLoadToken;
             setLoadingVisible(true);
-            requestGlbRoot(path).then((cachedRoot) => {
+            let timeoutId = 0;
+            const timeoutPromise = new Promise((_, reject) => {
+                timeoutId = window.setTimeout(() => {
+                    reject(new Error(`Timed out loading GLB after ${glbLoadTimeoutMs}ms`));
+                }, glbLoadTimeoutMs);
+            });
+            Promise.race([requestGlbRoot(path), timeoutPromise]).then((cachedRoot) => {
+                window.clearTimeout(timeoutId);
+                if (loadToken !== modelLoadToken) return;
                 const root = cachedRoot.clone(true);
 
                 root.updateMatrixWorld(true);
@@ -3119,7 +3138,9 @@
                 });
 
                 if (!sourceMesh || !sourceMesh.geometry) {
+                    setupFallbackMeshForGlb(path, 'no mesh geometry found');
                     setLoadingVisible(false);
+                    scheduleGlbPreload();
                     return;
                 }
 
@@ -3143,8 +3164,11 @@
                 setLoadingVisible(false);
                 scheduleGlbPreload();
             }).catch((err) => {
+                window.clearTimeout(timeoutId);
+                if (loadToken !== modelLoadToken) return;
                 console.error(`Failed to load GLB model: ${path}`);
                 if (err) console.error(err);
+                setupFallbackMeshForGlb(path, err && err.message ? err.message : 'load failed');
                 setLoadingVisible(false);
                 scheduleGlbPreload();
             });
@@ -3163,6 +3187,7 @@
         }
 
         function loadObject(type) {
+            modelLoadToken++;
             disposeCurrentMesh();
             if (type === 'bunny') {
                 applyMetalPreset();
@@ -4875,6 +4900,7 @@
         let controls;
         let saveRenderer;
         let mesh, helper, bvh;
+        let modelLoadToken = 0;
         let sphereInstance, lineSegments, sphereLabels;
         let insetWidth, insetHeight;
 
@@ -5229,7 +5255,6 @@
         setupIlluminationPreview();
         setupOrbitControls();
         updateLabelMask();
-        setLoadingVisible(args.lightstage.object.type === 'bunny');
 
         // create multiple cameras arranged in a 'W' shape and their helpers/markers
         function createCameraViews() {
