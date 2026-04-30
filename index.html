@@ -387,65 +387,41 @@
                 const candidates = [];
                 const textPixelCount = textCanvas.width * textCanvas.height;
                 const textMask = new Uint8Array(textPixelCount);
-                const edgeDistance = new Uint16Array(textPixelCount);
-                const maxDistance = 32767;
                 for (let index = 0; index < textPixelCount; index++) {
                     if (imageData[index * 4 + 3] > 28) {
                         textMask[index] = 1;
-                        edgeDistance[index] = maxDistance;
                     }
                 }
-                for (let y = 0; y < textCanvas.height; y++) {
-                    for (let x = 0; x < textCanvas.width; x++) {
-                        const index = y * textCanvas.width + x;
-                        if (!textMask[index]) continue;
-                        let best = edgeDistance[index];
-                        if (x > 0) best = Math.min(best, edgeDistance[index - 1] + 3);
-                        if (y > 0) best = Math.min(best, edgeDistance[index - textCanvas.width] + 3);
-                        if (x > 0 && y > 0) best = Math.min(best, edgeDistance[index - textCanvas.width - 1] + 4);
-                        if (x + 1 < textCanvas.width && y > 0) best = Math.min(best, edgeDistance[index - textCanvas.width + 1] + 4);
-                        edgeDistance[index] = best;
-                    }
-                }
-                for (let y = textCanvas.height - 1; y >= 0; y--) {
-                    for (let x = textCanvas.width - 1; x >= 0; x--) {
-                        const index = y * textCanvas.width + x;
-                        if (!textMask[index]) continue;
-                        let best = edgeDistance[index];
-                        if (x + 1 < textCanvas.width) best = Math.min(best, edgeDistance[index + 1] + 3);
-                        if (y + 1 < textCanvas.height) best = Math.min(best, edgeDistance[index + textCanvas.width] + 3);
-                        if (x + 1 < textCanvas.width && y + 1 < textCanvas.height) best = Math.min(best, edgeDistance[index + textCanvas.width + 1] + 4);
-                        if (x > 0 && y + 1 < textCanvas.height) best = Math.min(best, edgeDistance[index + textCanvas.width - 1] + 4);
-                        edgeDistance[index] = best;
-                    }
-                }
-                let minTextEdgeDistance = maxDistance;
-                let maxTextEdgeDistance = 0;
-                for (let index = 0; index < textPixelCount; index++) {
-                    if (!textMask[index]) continue;
-                    minTextEdgeDistance = Math.min(minTextEdgeDistance, edgeDistance[index]);
-                    maxTextEdgeDistance = Math.max(maxTextEdgeDistance, edgeDistance[index]);
-                }
-                const edgeDistanceRange = Math.max(1, maxTextEdgeDistance - minTextEdgeDistance);
                 const centerX = textCanvas.width * 0.5;
                 const centerY = textCanvas.height * 0.5;
                 const lineSplitY = titleSize * 1.24;
+                const hasText = (x, y) => (
+                    x >= 0
+                    && x < textCanvas.width
+                    && y >= 0
+                    && y < textCanvas.height
+                    && textMask[y * textCanvas.width + x]
+                );
+                const pushContourPoint = (sourceX, sourceY, x, y) => {
+                    const alpha = imageData[((sourceY * textCanvas.width + sourceX) * 4) + 3];
+                    const sweep = (Math.atan2(y - centerY, x - centerX) + Math.PI) / (Math.PI * 2);
+                    const seed = hashUnit((x + 19) * 12.9898 + (y + 31) * 78.233);
+                    candidates.push({
+                        x,
+                        y,
+                        alpha,
+                        line: y < lineSplitY ? 'title' : 'subtitle',
+                        reveal: sweep * 0.09 + seed * 0.025,
+                    });
+                };
                 for (let y = 0; y < textCanvas.height; y += sampleStep) {
                     for (let x = 0; x < textCanvas.width; x += sampleStep) {
                         const index = y * textCanvas.width + x;
                         if (!textMask[index]) continue;
-                        const alpha = imageData[index * 4 + 3];
-                        const borderDepth = clamp01((edgeDistance[index] - minTextEdgeDistance) / edgeDistanceRange);
-                        const sweep = (Math.atan2(y - centerY, x - centerX) + Math.PI) / (Math.PI * 2);
-                        const seed = hashUnit((x + 19) * 12.9898 + (y + 31) * 78.233);
-                        candidates.push({
-                            x,
-                            y,
-                            alpha,
-                            line: y < lineSplitY ? 'title' : 'subtitle',
-                            borderDepth,
-                            reveal: borderDepth * 0.88 + sweep * 0.09 + seed * 0.025,
-                        });
+                        if (!hasText(x - 1, y)) pushContourPoint(x, y, x - 0.5, y);
+                        if (!hasText(x + 1, y)) pushContourPoint(x, y, x + 0.5, y);
+                        if (!hasText(x, y - 1)) pushContourPoint(x, y, x, y - 0.5);
+                        if (!hasText(x, y + 1)) pushContourPoint(x, y, x, y + 0.5);
                     }
                 }
                 candidates.sort((a, b) => a.reveal - b.reveal || a.y - b.y || a.x - b.x);
@@ -458,21 +434,9 @@
                         points.push({ x: width * 0.5, y: height * 0.5, depth: 0.5, rim: 0.3, line: 'title', seed: hashUnit(i + 1) });
                     }
                 } else {
-                    const titleEdgeBand = 0.36;
-                    const subtitleEdgeBand = 0.24;
-                    const allEdgeCandidates = candidates.filter((candidate) => candidate.borderDepth <= titleEdgeBand);
-                    const titleEdgeCandidates = allEdgeCandidates.filter((candidate) => candidate.line === 'title');
-                    const subtitleEdgeCandidates = candidates.filter((candidate) => (
-                        candidate.line === 'subtitle'
-                        && candidate.borderDepth <= subtitleEdgeBand
-                    ));
-                    const titleCandidates = titleEdgeCandidates.length
-                        ? titleEdgeCandidates
-                        : candidates.filter((candidate) => candidate.line === 'title');
-                    const subtitleCandidates = subtitleEdgeCandidates.length
-                        ? subtitleEdgeCandidates
-                        : candidates.filter((candidate) => candidate.line === 'subtitle');
-                    const fallbackCandidates = allEdgeCandidates.length ? allEdgeCandidates : candidates;
+                    const titleCandidates = candidates.filter((candidate) => candidate.line === 'title');
+                    const subtitleCandidates = candidates.filter((candidate) => candidate.line === 'subtitle');
+                    const fallbackCandidates = candidates;
                     const subtitleCount = subtitleCandidates.length
                         ? Math.min(safeCount - 1, Math.max(1, Math.floor(safeCount * 0.26)))
                         : 0;
@@ -487,7 +451,7 @@
                             const seed = hashUnit((candidate.x + 19) * 12.9898 + (candidate.y + 31) * 78.233 + pointIndex * 0.37);
                             const nx = (candidate.x / Math.max(1, textCanvas.width)) * 2 - 1;
                             const ny = (candidate.y / Math.max(1, textCanvas.height)) * 2 - 1;
-                            const jitter = sampleStep * 0.08;
+                            const jitter = sampleStep * 0.01;
                             points.push({
                                 x: originX + candidate.x + (seed - 0.5) * jitter,
                                 y: originY + candidate.y + (hashUnit(seed * 91.7 + pointIndex) - 0.5) * jitter,
@@ -507,7 +471,7 @@
                         const seed = hashUnit((candidate.x + 19) * 12.9898 + (candidate.y + 31) * 78.233 + i * 0.37);
                         const nx = (candidate.x / Math.max(1, textCanvas.width)) * 2 - 1;
                         const ny = (candidate.y / Math.max(1, textCanvas.height)) * 2 - 1;
-                        const jitter = sampleStep * 0.08;
+                        const jitter = sampleStep * 0.01;
                         points.push({
                             x: originX + candidate.x + (seed - 0.5) * jitter,
                             y: originY + candidate.y + (hashUnit(seed * 91.7 + i) - 0.5) * jitter,
@@ -700,7 +664,7 @@
                     const localReveal = smoothstep(0.0, 0.18, elapsed - i / particleRevealRate);
                     const textPoint = textPoints[particleIndex] || textPoints[i % Math.max(1, textPoints.length)];
                     const targetProjected = projectBootPoint(target);
-                    const textDrift = (1 - ledFly) * (0.08 + (textPoint ? textPoint.depth : 0.5) * 0.22);
+                    const textDrift = (1 - ledFly) * (0.035 + (textPoint ? textPoint.depth : 0.5) * 0.09);
                     const textX = (textPoint ? textPoint.x : width * 0.5)
                         + Math.sin(elapsed * 1.2 + sourceIndex * 0.19) * textDrift;
                     const textY = (textPoint ? textPoint.y : height * 0.5)
@@ -719,8 +683,8 @@
                     const textHold = 1 - ledFly;
                     const baseRadius = perspectiveSize * (0.52 + localReveal * 0.48) * alivePulse * sizeJitter;
                     const textRadius = textPoint && textPoint.line === 'subtitle'
-                        ? 0.86 + textDepth * 0.34
-                        : 1.32 + textDepth * 0.58;
+                        ? 0.68 + textDepth * 0.24
+                        : 0.92 + textDepth * 0.36;
                     const radius = lerp(baseRadius, textRadius, textHold * 0.9);
                     const boardFade = 1 - smoothstep(0.84, 1, ledFly);
                     const baseAlpha = (0.045 + depthSize * 0.62 + rim * 0.08) * localReveal * Math.max(0.1, boardFade);
