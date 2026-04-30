@@ -22,6 +22,8 @@ const copyDescription = document.getElementById("copyDescription");
 const copyAuthor = document.getElementById("copyAuthor");
 const copyPanel = document.querySelector(".copyPanel");
 
+const GALLERY_ITEM_LIMIT = 2;
+
 const state = {
   items: [],
   currentIndex: 0,
@@ -1270,13 +1272,31 @@ function createViewerContactShadow() {
   return shadow;
 }
 
+function galleryItems() {
+  return state.items.slice(0, GALLERY_ITEM_LIMIT);
+}
+
+function normalizeGalleryIndex(index, itemCount = galleryItems().length) {
+  if (!itemCount) return 0;
+  return ((index % itemCount) + itemCount) % itemCount;
+}
+
+function clampCurrentGalleryIndex(items = galleryItems()) {
+  state.currentIndex = normalizeGalleryIndex(state.currentIndex, items.length);
+  return state.currentIndex;
+}
+
 function activeItem() {
-  return state.items[state.currentIndex] || null;
+  const items = galleryItems();
+  if (!items.length) return null;
+  return items[clampCurrentGalleryIndex(items)] || null;
 }
 
 function itemAt(offset) {
-  if (!state.items.length) return null;
-  return state.items[(state.currentIndex + offset + state.items.length) % state.items.length];
+  const items = galleryItems();
+  if (!items.length) return null;
+  const activeIndex = clampCurrentGalleryIndex(items);
+  return items[normalizeGalleryIndex(activeIndex + offset, items.length)];
 }
 
 function updateMaterials() {
@@ -1293,8 +1313,9 @@ function updateMaterials() {
   applyItemToMaterial(rightPreview.material, itemAt(1));
   applyItemToMaterial(farPreview.material, itemAt(2));
 
+  const activeIndex = normalizeGalleryIndex(state.currentIndex);
   filmStrip.querySelectorAll(".imageThumb").forEach((button, index) => {
-    button.classList.toggle("isActive", index === state.currentIndex);
+    button.classList.toggle("isActive", index === activeIndex);
   });
 }
 
@@ -1344,15 +1365,18 @@ function updateCameraControl() {
 }
 
 function cutTo(nextShotIndex, nextArtIndex = state.currentIndex) {
-  if (!state.items.length || state.cutting) return;
-  const changesArtwork = nextArtIndex !== state.currentIndex;
+  const items = galleryItems();
+  if (!items.length || state.cutting) return;
+  const currentIndex = clampCurrentGalleryIndex(items);
+  const scopedNextIndex = normalizeGalleryIndex(nextArtIndex, items.length);
+  const changesArtwork = scopedNextIndex !== currentIndex;
   const cutStartedAt = performance.now();
   state.cutting = changesArtwork;
   state.cutFlashUntil = changesArtwork ? 0 : cutStartedAt + 95;
   fadeLayer.classList.remove("isCutFlash");
   fadeLayer.classList.toggle("isVisible", changesArtwork);
   state.shotIndex = nextShotIndex;
-  state.currentIndex = nextArtIndex;
+  state.currentIndex = scopedNextIndex;
   state.shotStartedAt = cutStartedAt;
   shotLabel.textContent = shots[state.shotIndex].name;
   updateShotChrome();
@@ -1364,8 +1388,9 @@ function cutTo(nextShotIndex, nextArtIndex = state.currentIndex) {
 }
 
 function stepArtwork(delta) {
-  if (!state.items.length) return;
-  const nextIndex = (state.currentIndex + delta + state.items.length) % state.items.length;
+  const items = galleryItems();
+  if (!items.length) return;
+  const nextIndex = normalizeGalleryIndex(state.currentIndex + delta, items.length);
   cutTo(0, nextIndex);
 }
 
@@ -1380,7 +1405,7 @@ function renderFilmStrip() {
   addButton.addEventListener("click", () => imageInput?.click());
   filmStrip.append(addButton);
 
-  state.items.slice(0, 2).forEach((item, index) => {
+  galleryItems().forEach((item, index) => {
     const button = document.createElement("button");
     button.className = "thumb imageThumb";
     button.type = "button";
@@ -1411,6 +1436,7 @@ function hydrateImages(items) {
 function addImages(items) {
   const incoming = uniqueImages(items);
   state.items = uniqueImages([...state.items, ...incoming]);
+  clampCurrentGalleryIndex();
   renderFilmStrip();
   if (incoming.length) setSettingsOpen(true);
   hydrateImages(incoming);
@@ -1510,8 +1536,9 @@ function animateCamera(now) {
   camera.rotateZ(Math.sin(elapsed * 0.00058 + shotPhase) * (shot.roll ?? 0.002) * movementEnvelope);
 
   if (state.cinematic && progress >= 1 && !state.cutting) {
+    const items = galleryItems();
     const nextShot = (state.shotIndex + 1) % shots.length;
-    const nextArt = nextShot === 0 ? (state.currentIndex + 1) % state.items.length : state.currentIndex;
+    const nextArt = nextShot === 0 ? normalizeGalleryIndex(state.currentIndex + 1, items.length) : state.currentIndex;
     cutTo(nextShot, nextArt);
   }
 }
@@ -1663,7 +1690,7 @@ async function init() {
   const fallbackImages = DEFAULT_IMAGES.map((item, index) => normalizeImage(item, import.meta.url, index));
   const queryImages = loadQueryImages();
   state.items = uniqueImages([...manifestImages, ...fallbackImages, ...queryImages]);
-  state.currentIndex = 0;
+  state.currentIndex = normalizeGalleryIndex(0);
   shotLabel.textContent = shots[state.shotIndex].name;
   updateShotChrome();
   updateCameraControl();
