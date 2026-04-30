@@ -4830,6 +4830,40 @@
                     }
                 }
 
+                if (compactMobileLayout && layoutPreviewStats) {
+                    const infoPanel = document.getElementById('info');
+                    const infoHeight = infoPanel ? infoPanel.getBoundingClientRect().height : 30;
+                    const boardCount = lightboards && lightboards.children ? lightboards.children.length : 0;
+                    const boardTarget = lightStageBuildInProgress && lightStageTargetBoardCount ? `/${lightStageTargetBoardCount}` : '';
+                    const density = (args && args.lightstage && typeof args.lightstage.ledDensity !== 'undefined') ? args.lightstage.ledDensity : '-';
+                    const radiusVal = (args && args.lightstage && typeof args.lightstage.radius !== 'undefined') ? args.lightstage.radius : '-';
+                    const shapeVal = (args && args.lightstage && typeof args.lightstage.shape !== 'undefined') ? args.lightstage.shape : '-';
+                    const patternVal = (args && args.lightstage && args.lightstage.patterns && typeof args.lightstage.patterns.active !== 'undefined') ? args.lightstage.patterns.active : '-';
+                    const modelName = (args && args.lightstage && args.lightstage.object && args.lightstage.object.type) ? args.lightstage.object.type : '-';
+                    setHtmlIfChanged(layoutPreviewStats, `<span style="font-weight:600;color:#aad4f5">Mesh</span><br>Model: ${modelName}<br>Vertices: ${objectMeshStats.vertices}<br>Faces: ${objectMeshStats.faces}<br><span style="font-weight:600;color:#aad4f5">Light stage</span><br>Boards: ${boardCount}${boardTarget}<br>Density: ${density}<br>Radius: ${radiusVal}<br>Shape: ${shapeVal}<br>Pattern: ${patternVal}`);
+                    layoutPreviewStats.style.left = '10px';
+                    layoutPreviewStats.style.top = `${Math.floor(infoHeight + 8)}px`;
+                    layoutPreviewStats.style.right = 'auto';
+                    layoutPreviewStats.style.bottom = 'auto';
+                    layoutPreviewStats.style.transform = 'none';
+                    layoutPreviewStats.style.textAlign = 'left';
+                    layoutPreviewStats.style.maxWidth = `${Math.min(180, Math.max(120, window.innerWidth - 20))}px`;
+                    layoutPreviewStats.style.padding = '6px 7px';
+                    layoutPreviewStats.style.borderRadius = '4px';
+                    layoutPreviewStats.style.background = 'rgba(0,0,0,0.42)';
+                    layoutPreviewStats.style.textShadow = '0 0 4px rgba(0,0,0,0.85)';
+                    layoutPreviewStats.style.display = 'block';
+                    layoutPreviewStats.dataset.compactInfoPanel = '1';
+                    if (meshPreviewStats) meshPreviewStats.style.display = 'none';
+                } else if (layoutPreviewStats && layoutPreviewStats.dataset.compactInfoPanel === '1') {
+                    layoutPreviewStats.style.padding = '';
+                    layoutPreviewStats.style.borderRadius = '';
+                    layoutPreviewStats.style.background = '';
+                    layoutPreviewStats.style.textShadow = '';
+                    layoutPreviewStats.style.maxWidth = '';
+                    delete layoutPreviewStats.dataset.compactInfoPanel;
+                }
+
                 if ((illuminationPreviewGreyRenderer || renderSidePreviewsWithMainRenderer) && illuminationPreviewGreyCanvas) {
                     setStyleIfChanged(illuminationPreviewGreyCanvas, 'display', 'block');
                     setElementBox(illuminationPreviewGreyCanvas, greyCircleX, miniCircleTop, miniDiameter, miniDiameter);
