@@ -206,14 +206,28 @@
                 return a + (b - a) * t;
             }
 
-            function getFlightPosition(index, elapsed) {
-                const angle = index * 2.3999632297 + elapsed * 1.15;
-                const secondary = index * 0.917 + elapsed * 0.75;
-                const ring = 1.45 + (index % 9) * 0.055;
+            function getFlightPosition(target, index, elapsed) {
+                const baseLength = Math.hypot(target[0], target[1], target[2]) || 1;
+                const shellRadius = Math.max(1.58, baseLength * 1.14);
+                const nx = target[0] / baseLength;
+                const ny = target[1] / baseLength;
+                const nz = target[2] / baseLength;
+                const spin = elapsed * 0.46 + 0.85;
+                const tilt = -0.28 + Math.sin(elapsed * 0.35) * 0.05;
+                const cosY = Math.cos(spin);
+                const sinY = Math.sin(spin);
+                const cosX = Math.cos(tilt);
+                const sinX = Math.sin(tilt);
+                const x1 = nx * cosY - nz * sinY;
+                const z1 = nx * sinY + nz * cosY;
+                const y1 = ny;
+                const y2 = y1 * cosX - z1 * sinX;
+                const z2 = y1 * sinX + z1 * cosX;
+                const breathe = 1 + Math.sin(elapsed * 1.35 + index * 0.17) * 0.018;
                 return [
-                    Math.cos(angle) * ring + Math.sin(secondary) * 0.25,
-                    Math.sin(index * 1.173 + elapsed * 0.9) * 0.95,
-                    Math.sin(angle * 0.73) * 0.75 - 0.2,
+                    x1 * shellRadius * breathe,
+                    y2 * shellRadius * breathe,
+                    z2 * shellRadius * breathe,
                 ];
             }
 
@@ -247,7 +261,7 @@
                 for (let i = 0; i < revealCount; i++) {
                     const sourceIndex = order[i];
                     const target = positions[sourceIndex];
-                    const flight = getFlightPosition(sourceIndex, elapsed);
+                    const flight = getFlightPosition(target, sourceIndex, elapsed);
                     const localDelay = i * 0.0035;
                     const morph = smoothstep(0.35 + localDelay, 2.05 + localDelay, elapsed);
                     const localReveal = smoothstep(0.0, 0.18, elapsed - i / 120);
