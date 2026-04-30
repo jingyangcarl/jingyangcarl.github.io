@@ -345,7 +345,7 @@
 
                 const maxLineWidth = Math.max(300, Math.min(width * 0.74, 780));
                 let titleSize = Math.max(22, Math.min(58, width * 0.049, height * 0.084));
-                let subtitleSize = titleSize * 0.58;
+                let subtitleSize = titleSize * 0.56;
                 const title = 'The Algorithmic Aura';
                 const subtitle = '(CVPR 2026 Art)';
                 const titleFont = () => `800 ${titleSize}px Arial, Helvetica, sans-serif`;
@@ -360,11 +360,11 @@
 
                 while (titleSize > 20 && setFonts() > maxLineWidth) {
                     titleSize *= 0.92;
-                    subtitleSize = titleSize * 0.58;
+                    subtitleSize = titleSize * 0.56;
                 }
 
                 const textWidth = Math.ceil(Math.min(maxLineWidth, setFonts() + titleSize * 0.95));
-                const textHeight = Math.ceil(titleSize * 2.18);
+                const textHeight = Math.ceil(titleSize * 2.38);
                 textCanvas.width = Math.max(1, textWidth);
                 textCanvas.height = Math.max(1, textHeight);
                 textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
@@ -379,8 +379,8 @@
                 textCtx.fillText(title, textCanvas.width * 0.5, titleSize * 0.72);
                 textCtx.font = subtitleFont();
                 textCtx.lineWidth = Math.max(1.1, subtitleSize * 0.045);
-                textCtx.strokeText(subtitle, textCanvas.width * 0.5, titleSize * 1.52);
-                textCtx.fillText(subtitle, textCanvas.width * 0.5, titleSize * 1.52);
+                textCtx.strokeText(subtitle, textCanvas.width * 0.5, titleSize * 1.66);
+                textCtx.fillText(subtitle, textCanvas.width * 0.5, titleSize * 1.66);
 
                 const sampleStep = 1;
                 const imageData = textCtx.getImageData(0, 0, textCanvas.width, textCanvas.height).data;
@@ -429,7 +429,7 @@
                 const edgeDistanceRange = Math.max(1, maxTextEdgeDistance - minTextEdgeDistance);
                 const centerX = textCanvas.width * 0.5;
                 const centerY = textCanvas.height * 0.5;
-                const lineSplitY = titleSize * 1.12;
+                const lineSplitY = titleSize * 1.24;
                 for (let y = 0; y < textCanvas.height; y += sampleStep) {
                     for (let x = 0; x < textCanvas.width; x += sampleStep) {
                         const index = y * textCanvas.width + x;
@@ -458,10 +458,14 @@
                         points.push({ x: width * 0.5, y: height * 0.5, depth: 0.5, rim: 0.3, line: 'title', seed: hashUnit(i + 1) });
                     }
                 } else {
-                    const edgeBand = 0.36;
-                    const allEdgeCandidates = candidates.filter((candidate) => candidate.borderDepth <= edgeBand);
+                    const titleEdgeBand = 0.36;
+                    const subtitleEdgeBand = 0.24;
+                    const allEdgeCandidates = candidates.filter((candidate) => candidate.borderDepth <= titleEdgeBand);
                     const titleEdgeCandidates = allEdgeCandidates.filter((candidate) => candidate.line === 'title');
-                    const subtitleEdgeCandidates = allEdgeCandidates.filter((candidate) => candidate.line === 'subtitle');
+                    const subtitleEdgeCandidates = candidates.filter((candidate) => (
+                        candidate.line === 'subtitle'
+                        && candidate.borderDepth <= subtitleEdgeBand
+                    ));
                     const titleCandidates = titleEdgeCandidates.length
                         ? titleEdgeCandidates
                         : candidates.filter((candidate) => candidate.line === 'title');
@@ -470,7 +474,7 @@
                         : candidates.filter((candidate) => candidate.line === 'subtitle');
                     const fallbackCandidates = allEdgeCandidates.length ? allEdgeCandidates : candidates;
                     const subtitleCount = subtitleCandidates.length
-                        ? Math.min(safeCount - 1, Math.max(1, Math.floor(safeCount * 0.32)))
+                        ? Math.min(safeCount - 1, Math.max(1, Math.floor(safeCount * 0.26)))
                         : 0;
                     const titleCount = safeCount - subtitleCount;
                     const addSamples = (source, count, offset) => {
@@ -714,7 +718,9 @@
                     const perspectiveSize = 0.55 + depthSize * 3.25 + rim * 0.45;
                     const textHold = 1 - ledFly;
                     const baseRadius = perspectiveSize * (0.52 + localReveal * 0.48) * alivePulse * sizeJitter;
-                    const textRadius = (textPoint && textPoint.line === 'subtitle' ? 1.42 : 1.32) + textDepth * 0.58;
+                    const textRadius = textPoint && textPoint.line === 'subtitle'
+                        ? 0.86 + textDepth * 0.34
+                        : 1.32 + textDepth * 0.58;
                     const radius = lerp(baseRadius, textRadius, textHold * 0.9);
                     const boardFade = 1 - smoothstep(0.84, 1, ledFly);
                     const baseAlpha = (0.045 + depthSize * 0.62 + rim * 0.08) * localReveal * Math.max(0.1, boardFade);
