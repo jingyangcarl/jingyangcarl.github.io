@@ -318,8 +318,8 @@
             }
 
             function getBootPreviewParticleCount(targetCount) {
-                const sizeBudget = Math.min(width || 1, height || 1) < 680 ? 900 : 1650;
-                const areaBudget = Math.floor(Math.sqrt(Math.max(1, (width || 1) * (height || 1))) * 1.55);
+                const sizeBudget = Math.min(width || 1, height || 1) < 680 ? 1050 : 1850;
+                const areaBudget = Math.floor(Math.sqrt(Math.max(1, (width || 1) * (height || 1))) * 1.65);
                 return Math.max(360, Math.min(targetCount, sizeBudget, areaBudget));
             }
 
@@ -342,26 +342,28 @@
                 const textCtx = textCanvas.getContext('2d', { willReadFrequently: true });
                 if (!textCtx) return [];
 
-                const maxLineWidth = Math.max(300, Math.min(width * 0.9, 1040));
-                let titleSize = Math.max(20, Math.min(72, width * 0.064, height * 0.1));
-                let subtitleSize = titleSize * 0.46;
+                const maxLineWidth = Math.max(300, Math.min(width * 0.74, 780));
+                let titleSize = Math.max(22, Math.min(58, width * 0.049, height * 0.084));
+                let subtitleSize = titleSize * 0.58;
                 const title = 'The Algorithmic Aura';
                 const subtitle = '(CVPR 2026 Art)';
+                const titleFont = () => `800 ${titleSize}px Arial, Helvetica, sans-serif`;
+                const subtitleFont = () => `800 ${subtitleSize}px Arial, Helvetica, sans-serif`;
                 const setFonts = () => {
-                    textCtx.font = `700 ${titleSize}px Monospace`;
+                    textCtx.font = titleFont();
                     const titleWidth = textCtx.measureText(title).width;
-                    textCtx.font = `600 ${subtitleSize}px Monospace`;
+                    textCtx.font = subtitleFont();
                     const subtitleWidth = textCtx.measureText(subtitle).width;
                     return Math.max(titleWidth, subtitleWidth);
                 };
 
-                while (titleSize > 18 && setFonts() > maxLineWidth) {
+                while (titleSize > 20 && setFonts() > maxLineWidth) {
                     titleSize *= 0.92;
-                    subtitleSize = titleSize * 0.46;
+                    subtitleSize = titleSize * 0.58;
                 }
 
                 const textWidth = Math.ceil(Math.min(maxLineWidth, setFonts() + titleSize * 0.95));
-                const textHeight = Math.ceil(titleSize * 2.05);
+                const textHeight = Math.ceil(titleSize * 2.18);
                 textCanvas.width = Math.max(1, textWidth);
                 textCanvas.height = Math.max(1, textHeight);
                 textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
@@ -370,14 +372,14 @@
                 textCtx.fillStyle = '#ffffff';
                 textCtx.strokeStyle = '#ffffff';
                 textCtx.lineJoin = 'round';
-                textCtx.lineWidth = Math.max(1.5, titleSize * 0.05);
-                textCtx.font = `700 ${titleSize}px Monospace`;
+                textCtx.lineWidth = Math.max(1.4, titleSize * 0.04);
+                textCtx.font = titleFont();
                 textCtx.strokeText(title, textCanvas.width * 0.5, titleSize * 0.72);
                 textCtx.fillText(title, textCanvas.width * 0.5, titleSize * 0.72);
-                textCtx.font = `600 ${subtitleSize}px Monospace`;
-                textCtx.lineWidth = Math.max(1.2, subtitleSize * 0.06);
-                textCtx.strokeText(subtitle, textCanvas.width * 0.5, titleSize * 1.44);
-                textCtx.fillText(subtitle, textCanvas.width * 0.5, titleSize * 1.44);
+                textCtx.font = subtitleFont();
+                textCtx.lineWidth = Math.max(1.1, subtitleSize * 0.045);
+                textCtx.strokeText(subtitle, textCanvas.width * 0.5, titleSize * 1.52);
+                textCtx.fillText(subtitle, textCanvas.width * 0.5, titleSize * 1.52);
 
                 const sampleStep = 1;
                 const imageData = textCtx.getImageData(0, 0, textCanvas.width, textCanvas.height).data;
@@ -426,7 +428,7 @@
                 const edgeDistanceRange = Math.max(1, maxTextEdgeDistance - minTextEdgeDistance);
                 const centerX = textCanvas.width * 0.5;
                 const centerY = textCanvas.height * 0.5;
-                const lineSplitY = titleSize * 1.08;
+                const lineSplitY = titleSize * 1.12;
                 for (let y = 0; y < textCanvas.height; y += sampleStep) {
                     for (let x = 0; x < textCanvas.width; x += sampleStep) {
                         const index = y * textCanvas.width + x;
@@ -440,6 +442,7 @@
                             y,
                             alpha,
                             line: y < lineSplitY ? 'title' : 'subtitle',
+                            borderDepth,
                             reveal: borderDepth * 0.88 + sweep * 0.09 + seed * 0.025,
                         });
                     }
@@ -518,7 +521,11 @@
             function getBootParticleColor(textPoint, targetIndex, ledFly) {
                 const ledColor = getBootLedColor(targetIndex);
                 const textColor = textPoint && textPoint.line === 'subtitle'
-                    ? ledColor
+                    ? [
+                        Math.round(lerp(ledColor[0], 238, 0.26)),
+                        Math.round(lerp(ledColor[1], 246, 0.26)),
+                        Math.round(lerp(ledColor[2], 255, 0.26)),
+                    ]
                     : [238, 246, 255];
                 const colorFly = smoothstep(0.1, 0.82, ledFly);
                 return [
@@ -649,7 +656,7 @@
                     const localReveal = smoothstep(0.0, 0.18, elapsed - i / particleRevealRate);
                     const textPoint = textPoints[particleIndex] || textPoints[i % Math.max(1, textPoints.length)];
                     const targetProjected = projectBootPoint(target);
-                    const textDrift = (1 - ledFly) * (0.35 + (textPoint ? textPoint.depth : 0.5) * 0.85);
+                    const textDrift = (1 - ledFly) * (0.08 + (textPoint ? textPoint.depth : 0.5) * 0.22);
                     const textX = (textPoint ? textPoint.x : width * 0.5)
                         + Math.sin(elapsed * 1.2 + sourceIndex * 0.19) * textDrift;
                     const textY = (textPoint ? textPoint.y : height * 0.5)
@@ -667,11 +674,11 @@
                     const perspectiveSize = 0.55 + depthSize * 3.25 + rim * 0.45;
                     const textHold = 1 - ledFly;
                     const baseRadius = perspectiveSize * (0.52 + localReveal * 0.48) * alivePulse * sizeJitter;
-                    const textRadius = 1.05 + textDepth * 0.64;
-                    const radius = lerp(baseRadius, textRadius, textHold * 0.86);
+                    const textRadius = (textPoint && textPoint.line === 'subtitle' ? 1.42 : 1.32) + textDepth * 0.58;
+                    const radius = lerp(baseRadius, textRadius, textHold * 0.9);
                     const boardFade = 1 - smoothstep(0.84, 1, ledFly);
                     const baseAlpha = (0.045 + depthSize * 0.62 + rim * 0.08) * localReveal * Math.max(0.1, boardFade);
-                    const alpha = Math.min(0.98, baseAlpha * (1 + textHold * 0.45) + textHold * localReveal * 0.48);
+                    const alpha = Math.min(1, baseAlpha * (1 + textHold * 0.45) + textHold * localReveal * 0.62);
                     const color = getBootParticleColor(textPoint, sourceIndex, ledFly);
                     drawItems.push({
                         x,
