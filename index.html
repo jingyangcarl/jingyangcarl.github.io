@@ -252,6 +252,10 @@
                 }, 520);
             }
 
+            window.__isBootPreviewActive = function () {
+                return running && canvas.style.display !== 'none';
+            };
+
             function getFlightPosition(target, index, elapsed) {
                 const baseLength = Math.hypot(target[0], target[1], target[2]) || 1;
                 const shellRadius = Math.max(1.58, baseLength * 1.14);
@@ -278,6 +282,17 @@
             }
 
             function projectBootPoint(point) {
+                const liveProject = window.__projectBootLightStagePoint;
+                if (typeof liveProject === 'function') {
+                    const projected = liveProject(point);
+                    if (
+                        projected
+                        && Number.isFinite(projected.x)
+                        && Number.isFinite(projected.y)
+                    ) {
+                        return projected;
+                    }
+                }
                 const cameraZ = 2.5;
                 const fov = 75 * Math.PI / 180;
                 const focal = (height * 0.5) / Math.tan(fov * 0.5);
@@ -428,6 +443,15 @@
             // renderer = new WebGPURenderer();
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
+            window.__projectBootLightStagePoint = function (point) {
+                if (!camera) return null;
+                _bootProjectionPoint.set(point[0], point[1], point[2]).project(camera);
+                return {
+                    x: (_bootProjectionPoint.x * 0.5 + 0.5) * window.innerWidth,
+                    y: (-_bootProjectionPoint.y * 0.5 + 0.5) * window.innerHeight,
+                    depth: THREE.MathUtils.clamp((_bootProjectionPoint.z + 1) * 0.5, 0, 1),
+                };
+            };
 
             labelRenderer = new CSS2DRenderer();
             labelRenderer.setSize(window.innerWidth, window.innerHeight);
@@ -3657,18 +3681,28 @@
             });
         }
 
+        function isBootPreviewActive() {
+            return typeof window.__isBootPreviewActive === 'function' && window.__isBootPreviewActive();
+        }
+
+        function updateOrbitAutoRotateState() {
+            if (!controls) return;
+            controls.autoRotate = !!(args.controls.autoRotate && !isBootPreviewActive());
+        }
+
         function setupOrbitControls() {
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = args.controls.enableDamping; // Enable inertia
             controls.dampingFactor = args.controls.dampingFactor;
-            controls.autoRotate = args.controls.autoRotate;
             controls.autoRotateSpeed = args.controls.autoRotateSpeed;
+            updateOrbitAutoRotateState();
         }
 
         // Animation loop
         function animate() {
             render();
             stats.update();
+            updateOrbitAutoRotateState();
             controls.update();
         }
 
@@ -4800,6 +4834,7 @@
         const _illuminationPos = new THREE.Vector3();
         const _illuminationOffset = new THREE.Vector3();
         const _illuminationLightPos = new THREE.Vector3();
+        const _bootProjectionPoint = new THREE.Vector3();
         const _olatColor = new THREE.Color();
         const _whiteColor = new THREE.Color();
         const _warmupColor = new THREE.Color();
