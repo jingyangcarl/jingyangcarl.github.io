@@ -730,11 +730,18 @@
             document.body.appendChild(layoutPreviewStats);
 
             // light stage layout preview (wireframe)
-            layoutPreviewRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-            layoutPreviewRenderer.setClearColor(0x000000, 0);
-            layoutPreviewRenderer.setPixelRatio(window.devicePixelRatio || 1);
-            layoutPreviewRenderer.setSize(64, 64);
-            layoutPreviewCanvas = layoutPreviewRenderer.domElement;
+            if (renderSidePreviewsWithMainRenderer) {
+                layoutPreviewRenderer = null;
+                layoutPreviewCanvas = document.createElement('canvas');
+                layoutPreviewCanvas.width = 1;
+                layoutPreviewCanvas.height = 1;
+            } else {
+                layoutPreviewRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                layoutPreviewRenderer.setClearColor(0x000000, 0);
+                layoutPreviewRenderer.setPixelRatio(window.devicePixelRatio || 1);
+                layoutPreviewRenderer.setSize(64, 64);
+                layoutPreviewCanvas = layoutPreviewRenderer.domElement;
+            }
             layoutPreviewCanvas.id = 'layoutPreview';
             layoutPreviewCanvas.style.position = 'absolute';
             layoutPreviewCanvas.style.left = '0';
@@ -776,11 +783,18 @@
             meshPreviewStats.style.display = 'none';
             document.body.appendChild(meshPreviewStats);
 
-            meshPreviewRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-            meshPreviewRenderer.setClearColor(0x000000, 0);
-            meshPreviewRenderer.setPixelRatio(window.devicePixelRatio || 1);
-            meshPreviewRenderer.setSize(64, 64);
-            meshPreviewCanvas = meshPreviewRenderer.domElement;
+            if (renderSidePreviewsWithMainRenderer) {
+                meshPreviewRenderer = null;
+                meshPreviewCanvas = document.createElement('canvas');
+                meshPreviewCanvas.width = 1;
+                meshPreviewCanvas.height = 1;
+            } else {
+                meshPreviewRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                meshPreviewRenderer.setClearColor(0x000000, 0);
+                meshPreviewRenderer.setPixelRatio(window.devicePixelRatio || 1);
+                meshPreviewRenderer.setSize(64, 64);
+                meshPreviewCanvas = meshPreviewRenderer.domElement;
+            }
             meshPreviewCanvas.id = 'meshPreview';
             meshPreviewCanvas.style.position = 'absolute';
             meshPreviewCanvas.style.left = '0';
@@ -796,12 +810,19 @@
             meshPreviewScene = new THREE.Scene();
             meshPreviewCamera = new THREE.PerspectiveCamera(30, 1, 0.01, 1000);
 
-            // illumination previews (separate renderers for circular masks)
-            illuminationPreviewGreyRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-            illuminationPreviewGreyRenderer.setClearColor(0x000000, 0);
-            illuminationPreviewGreyRenderer.setPixelRatio(window.devicePixelRatio || 1);
-            illuminationPreviewGreyRenderer.setSize(64, 64);
-            illuminationPreviewGreyCanvas = illuminationPreviewGreyRenderer.domElement;
+            // illumination preview overlays
+            if (renderSidePreviewsWithMainRenderer) {
+                illuminationPreviewGreyRenderer = null;
+                illuminationPreviewGreyCanvas = document.createElement('canvas');
+                illuminationPreviewGreyCanvas.width = 1;
+                illuminationPreviewGreyCanvas.height = 1;
+            } else {
+                illuminationPreviewGreyRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                illuminationPreviewGreyRenderer.setClearColor(0x000000, 0);
+                illuminationPreviewGreyRenderer.setPixelRatio(window.devicePixelRatio || 1);
+                illuminationPreviewGreyRenderer.setSize(64, 64);
+                illuminationPreviewGreyCanvas = illuminationPreviewGreyRenderer.domElement;
+            }
             illuminationPreviewGreyCanvas.id = 'illuminationPreviewGrey';
             illuminationPreviewGreyCanvas.style.position = 'absolute';
             illuminationPreviewGreyCanvas.style.left = '0';
@@ -812,11 +833,18 @@
             illuminationPreviewGreyCanvas.style.zIndex = '995';
             document.body.appendChild(illuminationPreviewGreyCanvas);
 
-            illuminationPreviewChromeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-            illuminationPreviewChromeRenderer.setClearColor(0x000000, 0);
-            illuminationPreviewChromeRenderer.setPixelRatio(window.devicePixelRatio || 1);
-            illuminationPreviewChromeRenderer.setSize(64, 64);
-            illuminationPreviewChromeCanvas = illuminationPreviewChromeRenderer.domElement;
+            if (renderSidePreviewsWithMainRenderer) {
+                illuminationPreviewChromeRenderer = null;
+                illuminationPreviewChromeCanvas = document.createElement('canvas');
+                illuminationPreviewChromeCanvas.width = 1;
+                illuminationPreviewChromeCanvas.height = 1;
+            } else {
+                illuminationPreviewChromeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                illuminationPreviewChromeRenderer.setClearColor(0x000000, 0);
+                illuminationPreviewChromeRenderer.setPixelRatio(window.devicePixelRatio || 1);
+                illuminationPreviewChromeRenderer.setSize(64, 64);
+                illuminationPreviewChromeCanvas = illuminationPreviewChromeRenderer.domElement;
+            }
             illuminationPreviewChromeCanvas.id = 'illuminationPreviewChrome';
             illuminationPreviewChromeCanvas.style.position = 'absolute';
             illuminationPreviewChromeCanvas.style.left = '0';
@@ -908,6 +936,7 @@
                 Off: 'off'
             }).name('Patterns').onChange(v => {
                 args.lightstage.patterns.idx=0;
+                olatPreviewDirty = true;
                 if (v === 'hdri' || v === 'hdri_envmap' || v === 'all') {
                     hdriDirty = true;
                     hdriLastUpdate = 0;
@@ -930,6 +959,7 @@
                     args.lightstage.patterns.last_update = new Date().getTime();
                     hdriDirty = true;
                 }
+                markPatternPreviewDirty();
                 togglePatternControls();
             }).listen();
             gui_ls_patterns.add(args.lightstage.patterns, 'fps', 1, 60, 1).name('FPS').listen();
@@ -937,9 +967,11 @@
             window.patternsAutoplayCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'autoplay').name('Auto Play').onChange(() => {
                 args.lightstage.patterns.olatPausedApplied = false;
                 hdriLastUpdate = 0;
+                olatPreviewDirty = true;
+                markIlluminationLightsDirty();
             }).listen();
-            const olatColorCtrl = gui_ls_patterns.addColor(args.lightstage.patterns, 'olatColor').name('OLAT Color').listen();
-            const olatIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'olatIntensity', 1, 10, 0.1).name('OLAT Intensity').listen();
+            const olatColorCtrl = gui_ls_patterns.addColor(args.lightstage.patterns, 'olatColor').name('OLAT Color').onChange(() => { olatPreviewDirty = true; markIlluminationLightsDirty(); }).listen();
+            const olatIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'olatIntensity', 1, 10, 0.1).name('OLAT Intensity').onChange(() => { olatPreviewDirty = true; markIlluminationLightsDirty(); }).listen();
             window.hdriPatternCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriPattern', {
                 Gradient: 'gradient',
                 Horizon: 'horizon',
@@ -950,12 +982,12 @@
                 PurpleDusk: 'purpleDusk',
                 Custom1: 'custom1',
                 Custom2: 'custom2'
-            }).name('HDRI Pattern').onChange(() => { hdriDirty = true; }).listen();
-            window.hdriIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriIntensity', 0, 5, 0.1).name('HDRI Intensity').onChange(() => { hdriDirty = true; }).listen();
-            window.hdriLightIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriLightIntensity', 0, 5, 0.1).name('HDRI Light Intensity').onChange(() => { hdriDirty = true; }).listen();
-            window.hdriContrastCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriContrast', 0.1, 3, 0.1).name('HDRI Contrast').onChange(() => { hdriDirty = true; }).listen();
-            window.hdriHorizontalRotationCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriHorizontalRotation', 0, 720, 1).name('HDRI Horizontal Rotation').onChange(() => { hdriDirty = true; hdriPreviewDirty = true; }).listen();
-            window.hdriVerticalRotationCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriVerticalRotation', -180, 180, 1).name('HDRI Vertical Rotation').onChange(() => { hdriDirty = true; hdriPreviewDirty = true; }).listen();
+            }).name('HDRI Pattern').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
+            window.hdriIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriIntensity', 0, 5, 0.1).name('HDRI Intensity').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
+            window.hdriLightIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriLightIntensity', 0, 5, 0.1).name('HDRI Light Intensity').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
+            window.hdriContrastCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriContrast', 0.1, 3, 0.1).name('HDRI Contrast').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
+            window.hdriHorizontalRotationCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriHorizontalRotation', 0, 720, 1).name('HDRI Horizontal Rotation').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
+            window.hdriVerticalRotationCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriVerticalRotation', -180, 180, 1).name('HDRI Vertical Rotation').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
             const brdfViewCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'brdfView', {
                 'Base Color': 'baseColor',
                 Normal: 'normal',
@@ -1102,8 +1134,8 @@
             let gui_camera = gui_render.addFolder('Scene Camera');
             // gui_camera.open();
             gui_camera.add( args.render.camera, 'showCamera').name('Show Camera').onChange(v => {
-                if (cameraHelpersArr && cameraHelpersArr.length > 0) cameraHelpersArr.forEach(h => h.visible = v);
-                if (cameraMarkers) cameraMarkers.visible = v;
+                cameraHelpersVisibleState = null;
+                syncCameraHelperVisibility();
             }).listen();
             gui_camera.add( args.render.camera, 'cameraFar', 0.5, 10, 0.1 ).name('Camera Far').onChange(v => {
                 // update inset camera far and only the selected camera view's far
@@ -1119,7 +1151,8 @@
                         cv.updateProjectionMatrix();
                     });
                 }
-                if (cameraHelpersArr && cameraHelpersArr.length > 0) cameraHelpersArr.forEach(h => h.update());
+                markCameraHelpersDirty();
+                syncCameraHelperVisibility();
             }).listen();
             gui_camera.add( args.render.camera, 'cameraCount', 1, 20, 1 ).name('Camera Count').onChange(v => {
                 // recreate camera views with new count
@@ -2618,6 +2651,8 @@
                         // Force cache invalidation by clearing both caches
                         hdriCache = null;
                         hdriLastUpdate = 0;
+                        olatPreviewDirty = true;
+                        markIlluminationLightsDirty();
                         
                         // Temporarily switch patterns to force a full refresh
                         const tempPattern = slot === 'custom1' ? 'gradient' : 'custom1';
@@ -2708,6 +2743,8 @@
                     toCacheEntry(imgVista, false, 'custom1');
                     hdriDirty = true;
                     hdriPreviewDirty = true;
+                    olatPreviewDirty = true;
+                    markIlluminationLightsDirty();
                     hdriBaseColorsDirty = true;
                 },
                 () => {
@@ -2717,6 +2754,8 @@
                             toCacheEntry(imgFallback, false, 'custom1');
                             hdriDirty = true;
                             hdriPreviewDirty = true;
+                            olatPreviewDirty = true;
+                            markIlluminationLightsDirty();
                             hdriBaseColorsDirty = true;
                         },
                         () => {
@@ -2732,6 +2771,8 @@
                     toCacheEntry(imgSample, true, 'custom2');
                     hdriDirty = true;
                     hdriPreviewDirty = true;
+                    olatPreviewDirty = true;
+                    markIlluminationLightsDirty();
                     hdriBaseColorsDirty = true;
                 },
                 () => {
@@ -2828,6 +2869,8 @@
                 else hdriCache = generateGradientHDRI(width, height);
                 if (!isCustom || !customHdriCache[pattern]) hdriCache.pattern = pattern;
                 hdriPreviewDirty = true;
+                olatPreviewDirty = true;
+                markIlluminationLightsDirty();
                 hdriBaseColorsDirty = true;
             }
 
@@ -2884,6 +2927,8 @@
                     leds.needsUpdate = true;
                 });
                 hdriPreviewDirty = true;
+                olatPreviewDirty = true;
+                markIlluminationLightsDirty();
                 updateHdriPreviewCanvas();
                 updateOlatPreviewCanvas();
                 return;
@@ -2926,6 +2971,8 @@
                 applyHDRIEnvMap({ preserveLightSources: true });
             }
             hdriPreviewDirty = true;
+            olatPreviewDirty = true;
+            markIlluminationLightsDirty();
             updateHdriPreviewCanvas();
             updateOlatPreviewCanvas();
         }
@@ -2960,6 +3007,8 @@
                 }
                 if (!isCustom || !customEntry) hdriCache.pattern = pattern;
                 hdriPreviewDirty = true;
+                olatPreviewDirty = true;
+                markIlluminationLightsDirty();
             }
 
             const intensity = (typeof patterns.hdriIntensity === 'number')
@@ -3003,6 +3052,8 @@
                 disableAllLightSources();
             }
             hdriPreviewDirty = true;
+            olatPreviewDirty = true;
+            markIlluminationLightsDirty();
             updateHdriPreviewCanvas();
         }
 
@@ -3015,6 +3066,11 @@
                 hdriEnvMapTexture.dispose();
                 hdriEnvMapTexture = null;
             }
+        }
+
+        function clearNonOlatLighting() {
+            if (brdfOverrideActive) clearBrdfOverride();
+            clearHDRIEnvMap();
         }
 
         function createPrimitiveMesh(type) {
@@ -3268,6 +3324,7 @@
                     illuminationLightsChrome.push(lightChrome);
                 });
             }
+            markIlluminationLightsDirty();
         }
 
         function setupRayCaster() {
@@ -3468,6 +3525,8 @@
 
             // reset all lights to off
             if (patterns.idx == 0) {
+                olatPreviewDirty = true;
+                markIlluminationLightsDirty();
                 lightboardRefs.forEach((ref) => {
                     let leds = ref.ledsAttr;
                     let leds_init = ref.ledsInit;
@@ -3482,6 +3541,8 @@
 
             if (shouldStep) {
                 patterns.last_update = curr;
+                olatPreviewDirty = true;
+                markIlluminationLightsDirty();
 
                 let n_all_white = patterns.fps; // 1 second all white
                 let n_all_off = patterns.fps / 2; // 0.5 second all off
@@ -3599,6 +3660,8 @@
             const lightboardsChanged = (_warmupLightboardVersion !== lightboardRefsVersion);
             if (patterns.idx >= 0 || warmupChanged || lightboardsChanged) {
                 if (!lightboardRefs || lightboardRefs.length === 0) return false;
+                olatPreviewDirty = true;
+                markIlluminationLightsDirty();
                 lightboardRefs.forEach((ref) => {
                     let leds = ref.ledsAttr;
                     let leds_init = ref.ledsInit;
@@ -3647,6 +3710,7 @@
                 restoreBrdfPreviewBallMaterials();
             }
             if (args.lightstage.patterns.active === 'olat') {
+                clearNonOlatLighting();
                 handleOlatPattern(curr, off);
             } else if (args.lightstage.patterns.active === 'hdri') {
                 if (brdfOverrideActive) clearBrdfOverride();
@@ -3673,11 +3737,13 @@
             } else if (args.lightstage.patterns.active === 'all') {
                 if (allPhase !== 'brdf' && brdfOverrideActive) clearBrdfOverride();
                 if (allPhase === 'warmup') {
+                    clearNonOlatLighting();
                     const warmupDone = handleWarmupPattern(curr, true);
                     if (warmupDone) {
                         allPhase = 'hdri';
                         allHdriSteps = 0;
                         hdriDirty = true;
+                        markPatternPreviewDirty();
                         hdriLastUpdate = 0;
                         args.lightstage.patterns.idx = 0;
                         args.lightstage.patterns.last_update = curr;
@@ -3688,18 +3754,22 @@
                         allPhase = 'olat';
                         args.lightstage.patterns.idx = 0;
                         args.lightstage.patterns.last_update = curr;
-                    }
-                    if (hdriDirty) {
+                        olatPreviewDirty = true;
+                        hdriDirty = false;
+                        clearNonOlatLighting();
+                    } else if (hdriDirty) {
                         applyHDRIPattern();
                         hdriDirty = false;
                     }
                 } else if (allPhase === 'olat') {
+                    clearNonOlatLighting();
                     handleOlatPattern(curr, off, () => {
                         allPhase = 'brdf';
                         allBrdfSteps = 0;
                         args.lightstage.patterns.brdfView = brdfViewSequence[0];
                         args.lightstage.patterns.last_update = curr;
                         brdfPreviewDirty = true;
+                        olatPreviewDirty = true;
                     });
                 } else if (allPhase === 'brdf') {
                     const brdfDone = handleBrdfPattern(curr, true);
@@ -3708,6 +3778,7 @@
                         allWarmupStart = 0;
                         allHdriSteps = 0;
                         hdriDirty = true;
+                        markPatternPreviewDirty();
                         hdriLastUpdate = 0;
                         brdfLightsDisabled = false;
                         args.lightstage.patterns.idx = 0;
@@ -3717,6 +3788,7 @@
             } else if (args.lightstage.patterns.active === 'brdf') {
                 handleBrdfPattern(curr, false);
             } else if (args.lightstage.patterns.active == 'warmup') {
+                clearNonOlatLighting();
                 handleWarmupPattern(curr, false);
             } else if (args.lightstage.patterns.active == 'off') {
                 if (brdfOverrideActive) clearBrdfOverride();
@@ -3743,6 +3815,9 @@
         function syncIlluminationLights() {
             if (!lightboards || !illuminationLightsGrey || !illuminationLightsChrome) return;
             if (illuminationLightsGrey.length === 0 || illuminationLightsChrome.length === 0) return;
+            if (!args.render.sideRender.showIllumination) return;
+            const signature = getIlluminationSyncSignature();
+            if (!illuminationLightsDirty && signature === illuminationSyncSignature) return;
             lightboards.children.forEach((lightboard, i) => {
                 const srcLight = lightboard.getObjectByName('led_light');
                 const greyLight = illuminationLightsGrey[i];
@@ -3758,6 +3833,8 @@
                 greyLight.power = srcLight.power;
                 chromeLight.power = srcLight.power;
             });
+            illuminationLightsDirty = false;
+            illuminationSyncSignature = signature;
         }
 
         function isBootPreviewActive() {
@@ -3815,18 +3892,7 @@
                 });
             }
 
-            // update multiple camera helpers and markers visibility/update
-            if (cameraHelpersArr && cameraHelpersArr.length > 0) {
-                cameraHelpersArr.forEach(h => {
-                    if (h) {
-                        h.visible = args.render.camera.showCamera;
-                        h.update();
-                    }
-                });
-            }
-            if (cameraMarkers) {
-                cameraMarkers.visible = args.render.camera.showCamera;
-            }
+            syncCameraHelperVisibility();
 
             if (mesh && args.controls.autoRotate_mesh) {
                 mesh.rotation.y += args.controls.autoRotate_mesh_speed / 10;
@@ -3988,7 +4054,7 @@
                 }
 
                 // layout preview (wireframe) next to equirect preview on the left
-                if (layoutPreviewCanvas && layoutPreviewRenderer && layoutPreviewScene && layoutPreviewCamera) {
+                if (layoutPreviewCanvas && (layoutPreviewRenderer || renderSidePreviewsWithMainRenderer) && layoutPreviewScene && layoutPreviewCamera) {
                     if (showPatternPreview) {
                         const layoutSize = Math.max(60, Math.floor(clampedHeight * 0.75));
                         const layoutGap = 8;
@@ -3996,12 +4062,11 @@
                         const layoutY = equirectY + Math.max(0, Math.floor((clampedHeight - layoutSize) / 2));
                         const layoutTop = Math.max(0, window.innerHeight - (layoutY + layoutSize));
 
-                        layoutPreviewCanvas.style.display = 'block';
-                        layoutPreviewCanvas.style.left = `${layoutX}px`;
-                        layoutPreviewCanvas.style.top = `${layoutTop}px`;
-                        layoutPreviewCanvas.style.width = `${layoutSize}px`;
-                        layoutPreviewCanvas.style.height = `${layoutSize}px`;
-                        layoutPreviewRenderer.setSize(layoutSize, layoutSize, false);
+                        setStyleIfChanged(layoutPreviewCanvas, 'display', 'block');
+                        setElementBox(layoutPreviewCanvas, layoutX, layoutTop, layoutSize, layoutSize);
+                        if (!renderSidePreviewsWithMainRenderer) {
+                            setRendererSizeIfChanged(layoutPreviewRenderer, layoutSize, layoutSize);
+                        }
 
                         if (layoutPreviewCaption) {
                             const captionOffset = 6;
@@ -4024,7 +4089,7 @@
                             const radiusVal = (args && args.lightstage && typeof args.lightstage.radius !== 'undefined') ? args.lightstage.radius : '-';
                             const shapeVal = (args && args.lightstage && typeof args.lightstage.shape !== 'undefined') ? args.lightstage.shape : '-';
                             const patternVal = (args && args.lightstage && args.lightstage.patterns && typeof args.lightstage.patterns.active !== 'undefined') ? args.lightstage.patterns.active : '-';
-                            layoutPreviewStats.innerHTML = `<span style="font-weight:600;color:#aad4f5">Light stage</span><br>Boards: ${boardCount}${boardTarget}<br>Density: ${density}<br>Radius: ${radiusVal}<br>Shape: ${shapeVal}<br>Pattern: ${patternVal}`;
+                            setHtmlIfChanged(layoutPreviewStats, `<span style="font-weight:600;color:#aad4f5">Light stage</span><br>Boards: ${boardCount}${boardTarget}<br>Density: ${density}<br>Radius: ${radiusVal}<br>Shape: ${shapeVal}<br>Pattern: ${patternVal}`);
                             layoutPreviewStats.style.left = `${layoutX - captionPad}px`;
                             layoutPreviewStats.style.top = `${layoutTop + layoutSize / 2}px`;
                             layoutPreviewStats.style.right = 'auto';
@@ -4034,14 +4099,16 @@
                         }
 
                         // align with perspective camera rotation
-                        layoutPreviewCamera.fov = camera.fov;
-                        layoutPreviewCamera.aspect = 1;
+                        setPerspectiveProjectionIfChanged(layoutPreviewCamera, camera.fov, 1);
                         layoutPreviewCamera.position.copy(camera.position);
                         layoutPreviewCamera.quaternion.copy(camera.quaternion);
-                        layoutPreviewCamera.updateProjectionMatrix();
 
                         if (layoutPreviewRig) layoutPreviewRig.visible = true;
-                        layoutPreviewRenderer.render(layoutPreviewScene, layoutPreviewCamera);
+                        if (renderSidePreviewsWithMainRenderer) {
+                            renderOverlaySceneWithMainRenderer(layoutPreviewScene, layoutPreviewCamera, layoutX, layoutTop, layoutSize, layoutSize);
+                        } else {
+                            layoutPreviewRenderer.render(layoutPreviewScene, layoutPreviewCamera);
+                        }
                     } else {
                         layoutPreviewCanvas.style.display = 'none';
                         if (layoutPreviewCaption) layoutPreviewCaption.style.display = 'none';
@@ -4050,7 +4117,7 @@
                 }
 
                 // mesh wireframe preview (left of Light sources equirect)
-                if (meshPreviewCanvas && meshPreviewRenderer && meshPreviewScene && meshPreviewCamera) {
+                if (meshPreviewCanvas && (meshPreviewRenderer || renderSidePreviewsWithMainRenderer) && meshPreviewScene && meshPreviewCamera) {
                     if (showPatternPreview && meshPreviewRig) {
                         const meshSize = Math.max(60, Math.floor(clampedHeight * 0.75));
                         const meshGap = 8;
@@ -4061,12 +4128,11 @@
                         // shared stats column right-edge (same as layout preview stats)
                         const statsColX = meshX - captionPad;
 
-                        meshPreviewCanvas.style.display = 'block';
-                        meshPreviewCanvas.style.left = `${meshX}px`;
-                        meshPreviewCanvas.style.top = `${meshTop}px`;
-                        meshPreviewCanvas.style.width = `${meshSize}px`;
-                        meshPreviewCanvas.style.height = `${meshSize}px`;
-                        meshPreviewRenderer.setSize(meshSize, meshSize, false);
+                        setStyleIfChanged(meshPreviewCanvas, 'display', 'block');
+                        setElementBox(meshPreviewCanvas, meshX, meshTop, meshSize, meshSize);
+                        if (!renderSidePreviewsWithMainRenderer) {
+                            setRendererSizeIfChanged(meshPreviewRenderer, meshSize, meshSize);
+                        }
 
                         if (meshPreviewCaption) {
                             const captionOffset = 6;
@@ -4084,7 +4150,7 @@
 
                         if (meshPreviewStats) {
                             const modelName = (args && args.lightstage && args.lightstage.object && args.lightstage.object.type) ? args.lightstage.object.type : '-';
-                            meshPreviewStats.innerHTML = `<span style="font-weight:600;color:#aad4f5">Mesh</span><br>Model: ${modelName}<br>Vertices: ${objectMeshStats.vertices}<br>Faces: ${objectMeshStats.faces}`;
+                            setHtmlIfChanged(meshPreviewStats, `<span style="font-weight:600;color:#aad4f5">Mesh</span><br>Model: ${modelName}<br>Vertices: ${objectMeshStats.vertices}<br>Faces: ${objectMeshStats.faces}`);
                             meshPreviewStats.style.left = `${statsColX}px`;
                             meshPreviewStats.style.top = `${meshTop + meshSize / 2}px`;
                             meshPreviewStats.style.right = 'auto';
@@ -4099,8 +4165,7 @@
                         }
 
                         // sync orientation + zoom with main camera
-                        meshPreviewCamera.fov = camera.fov;
-                        meshPreviewCamera.aspect = 1;
+                        setPerspectiveProjectionIfChanged(meshPreviewCamera, camera.fov, 1);
                         if (controls) {
                             const currentDist = camera.position.distanceTo(controls.target);
                             if (meshPreviewRefDist === 0) meshPreviewRefDist = currentDist;
@@ -4112,8 +4177,11 @@
                             meshPreviewCamera.position.copy(meshCamDir.multiplyScalar(1.2));
                         }
                         meshPreviewCamera.quaternion.copy(camera.quaternion);
-                        meshPreviewCamera.updateProjectionMatrix();
-                        meshPreviewRenderer.render(meshPreviewScene, meshPreviewCamera);
+                        if (renderSidePreviewsWithMainRenderer) {
+                            renderOverlaySceneWithMainRenderer(meshPreviewScene, meshPreviewCamera, meshX, meshTop, meshSize, meshSize);
+                        } else {
+                            meshPreviewRenderer.render(meshPreviewScene, meshPreviewCamera);
+                        }
                     } else {
                         meshPreviewCanvas.style.display = 'none';
                         if (meshPreviewCaption) meshPreviewCaption.style.display = 'none';
@@ -4121,45 +4189,51 @@
                     }
                 }
 
-                if (illuminationPreviewGreyRenderer && illuminationPreviewGreyCanvas) {
-                    illuminationPreviewGreyCanvas.style.display = 'block';
-                    illuminationPreviewGreyCanvas.style.left = `${greyCircleX}px`;
-                    illuminationPreviewGreyCanvas.style.top = `${miniCircleTop}px`;
-                    illuminationPreviewGreyCanvas.style.width = `${miniDiameter}px`;
-                    illuminationPreviewGreyCanvas.style.height = `${miniDiameter}px`;
-                    illuminationPreviewGreyRenderer.setSize(miniDiameter, miniDiameter, false);
-                    illuminationPreviewGreyRenderer.setClearColor(0x000000, 0);
-                    illuminationPreviewGreyRenderer.clear(true, true, true);
-                    illuminationCameraGrey.aspect = 1;
-                    illuminationCameraGrey.updateProjectionMatrix();
-                    illuminationPreviewGreyRenderer.render(illuminationSceneGrey, illuminationCameraGrey);
+                if ((illuminationPreviewGreyRenderer || renderSidePreviewsWithMainRenderer) && illuminationPreviewGreyCanvas) {
+                    setStyleIfChanged(illuminationPreviewGreyCanvas, 'display', 'block');
+                    setElementBox(illuminationPreviewGreyCanvas, greyCircleX, miniCircleTop, miniDiameter, miniDiameter);
+                    if (!renderSidePreviewsWithMainRenderer) {
+                        setRendererSizeIfChanged(illuminationPreviewGreyRenderer, miniDiameter, miniDiameter);
+                    }
+                    if (!renderSidePreviewsWithMainRenderer) {
+                        illuminationPreviewGreyRenderer.clear(true, true, true);
+                    }
+                    setPerspectiveProjectionIfChanged(illuminationCameraGrey, illuminationCameraGrey.fov, 1);
+                    if (renderSidePreviewsWithMainRenderer) {
+                        renderOverlaySceneWithMainRenderer(illuminationSceneGrey, illuminationCameraGrey, greyCircleX, miniCircleTop, miniDiameter, miniDiameter);
+                    } else {
+                        illuminationPreviewGreyRenderer.render(illuminationSceneGrey, illuminationCameraGrey);
+                    }
                 }
 
-                if (illuminationPreviewChromeRenderer && illuminationPreviewChromeCanvas) {
-                    illuminationPreviewChromeCanvas.style.display = 'block';
-                    illuminationPreviewChromeCanvas.style.left = `${chromeCircleX}px`;
-                    illuminationPreviewChromeCanvas.style.top = `${miniCircleTop}px`;
-                    illuminationPreviewChromeCanvas.style.width = `${miniDiameter}px`;
-                    illuminationPreviewChromeCanvas.style.height = `${miniDiameter}px`;
-                    illuminationPreviewChromeRenderer.setSize(miniDiameter, miniDiameter, false);
-                    illuminationPreviewChromeRenderer.setClearColor(0x000000, 0);
-                    illuminationPreviewChromeRenderer.clear(true, true, true);
-                    illuminationCameraChrome.aspect = 1;
-                    illuminationCameraChrome.updateProjectionMatrix();
-                    illuminationPreviewChromeRenderer.render(illuminationSceneChrome, illuminationCameraChrome);
+                if ((illuminationPreviewChromeRenderer || renderSidePreviewsWithMainRenderer) && illuminationPreviewChromeCanvas) {
+                    setStyleIfChanged(illuminationPreviewChromeCanvas, 'display', 'block');
+                    setElementBox(illuminationPreviewChromeCanvas, chromeCircleX, miniCircleTop, miniDiameter, miniDiameter);
+                    if (!renderSidePreviewsWithMainRenderer) {
+                        setRendererSizeIfChanged(illuminationPreviewChromeRenderer, miniDiameter, miniDiameter);
+                    }
+                    if (!renderSidePreviewsWithMainRenderer) {
+                        illuminationPreviewChromeRenderer.clear(true, true, true);
+                    }
+                    setPerspectiveProjectionIfChanged(illuminationCameraChrome, illuminationCameraChrome.fov, 1);
+                    if (renderSidePreviewsWithMainRenderer) {
+                        renderOverlaySceneWithMainRenderer(illuminationSceneChrome, illuminationCameraChrome, chromeCircleX, miniCircleTop, miniDiameter, miniDiameter);
+                    } else {
+                        illuminationPreviewChromeRenderer.render(illuminationSceneChrome, illuminationCameraChrome);
+                    }
                 }
 
                 if (showPatternPreview) {
                     if (brdfPreviewCanvas) brdfPreviewCanvas.style.display = 'none';
                     if (hdriPreviewCanvas) {
-                        hdriPreviewCanvas.style.display = 'block';
+                        setStyleIfChanged(hdriPreviewCanvas, 'display', 'block');
                         layoutEquirectPreview(hdriPreviewCanvas, hdriPreviewCtx, hdriPreviewOffscreen, equirectX, equirectY, clampedWidth, clampedHeight, true);
                     }
                     if (olatPreviewCanvas) {
                         const _isEnvMap = args.lightstage.patterns.active === 'hdri_envmap'
                             || (args.lightstage.patterns.active === 'all' && allPhase === 'hdri_envmap');
-                        olatPreviewCanvas.style.display = 'block';
-                        olatPreviewCanvas.style.filter = _isEnvMap ? 'blur(6px)' : 'none';
+                        setStyleIfChanged(olatPreviewCanvas, 'display', 'block');
+                        setStyleIfChanged(olatPreviewCanvas, 'filter', _isEnvMap ? 'blur(6px)' : 'none');
                         layoutEquirectPreview(olatPreviewCanvas, olatPreviewCtx, olatPreviewOffscreen, equirectX2, equirectY2, clampedWidth, clampedHeight, false);
                     }
                 } else {
@@ -4474,8 +4548,7 @@
             if (!hdriCache || !hdriCache.colors) return;
             if (!hdriPreviewDirty) return;
             if (width <= 0 || height <= 0) return;
-            hdriPreviewOffscreen.width = width;
-            hdriPreviewOffscreen.height = height;
+            setCanvasSizeIfChanged(hdriPreviewOffscreen, width, height);
             const imgData = hdriPreviewOffCtx.createImageData(width, height);
             const data = imgData.data;
             const intensity = (typeof patterns.hdriIntensity === 'number')
@@ -4550,8 +4623,9 @@
             const width = _olatIsCustom ? 512 : (args.lightstage.patterns.hdriResolution || 128);
             const height = _olatIsCustom ? 256 : Math.floor(width / 2);
             if (width <= 0 || height <= 0) return;
-            olatPreviewOffscreen.width = width;
-            olatPreviewOffscreen.height = height;
+            const signature = getOlatPreviewSignature(width, height);
+            if (!olatPreviewDirty && signature === olatPreviewSignature) return;
+            setCanvasSizeIfChanged(olatPreviewOffscreen, width, height);
 
             const imgData = olatPreviewOffCtx.createImageData(width, height);
             const data = imgData.data;
@@ -4599,6 +4673,8 @@
                     }
                 }
                 olatPreviewOffCtx.putImageData(imgData, 0, 0);
+                olatPreviewDirty = false;
+                olatPreviewSignature = getOlatPreviewSignature(width, height);
                 return;
             }
 
@@ -4651,6 +4727,8 @@
             }
 
             olatPreviewOffCtx.putImageData(imgData, 0, 0);
+            olatPreviewDirty = false;
+            olatPreviewSignature = getOlatPreviewSignature(width, height);
         }
 
         function setupBrdfPreview() {
@@ -4709,11 +4787,8 @@
             const width = Math.max(10, Math.floor(miniWidth));
             const height = Math.max(10, Math.floor(miniHeight));
             const cssTop = Math.max(0, window.innerHeight - (miniY + height));
-            brdfPreviewCanvas.style.left = `${miniX}px`;
-            brdfPreviewCanvas.style.top = `${cssTop}px`;
-            brdfPreviewCanvas.style.width = `${width}px`;
-            brdfPreviewCanvas.style.height = `${height}px`;
-            brdfPreviewRenderer.setSize(width, height, false);
+            setElementBox(brdfPreviewCanvas, miniX, cssTop, width, height);
+            setRendererSizeIfChanged(brdfPreviewRenderer, width, height);
 
             if (brdfPreviewDirty) updateBrdfPreviewMaterials();
 
@@ -4728,7 +4803,6 @@
                 brdfPreviewMesh.scale.copy(mesh.scale);
             }
 
-            brdfPreviewRenderer.setClearColor(0x000000, 0);
             brdfPreviewRenderer.clear(true, true, true);
             const view = (args && args.lightstage && args.lightstage.patterns && args.lightstage.patterns.brdfView)
                 ? args.lightstage.patterns.brdfView
@@ -4742,8 +4816,7 @@
                 transmission: brdfPreviewMaterials.transmission
             };
             brdfPreviewMesh.material = materialMap[view] || brdfPreviewMaterials.base;
-            brdfPreviewCamera.aspect = width / height;
-            brdfPreviewCamera.updateProjectionMatrix();
+            setPerspectiveProjectionIfChanged(brdfPreviewCamera, brdfPreviewCamera.fov, width / height);
             brdfPreviewRenderer.setViewport(0, 0, width, height);
             brdfPreviewRenderer.render(brdfPreviewScene, brdfPreviewCamera);
         }
@@ -4752,11 +4825,10 @@
             if (!previewCanvas || !previewCtx) return;
             const width = Math.max(10, Math.floor(miniWidth));
             const height = Math.max(10, Math.floor(miniHeight));
-            previewCanvas.width = width;
-            previewCanvas.height = height;
+            setCanvasSizeIfChanged(previewCanvas, width, height);
             const cssTop = Math.max(0, window.innerHeight - (miniY + height));
-            previewCanvas.style.left = `${miniX}px`;
-            previewCanvas.style.top = `${cssTop}px`;
+            setStyleIfChanged(previewCanvas, 'left', `${miniX}px`);
+            setStyleIfChanged(previewCanvas, 'top', `${cssTop}px`);
 
             if (args && args.lightstage && args.lightstage.patterns && (
                 args.lightstage.patterns.active === 'brdf'
@@ -4874,6 +4946,7 @@
         let lightStageTargetBoardCount = 0;
         let lightStageRevealCompleteNotified = false;
         const maxBulkPointLights = 64;
+        const renderSidePreviewsWithMainRenderer = true;
         let axesHelper;
         let axesLabelGroup;
         let axesLabelElements = [];
@@ -4891,6 +4964,8 @@
         let cameraHelper;
         let cameraViews = [];
         let cameraHelpersArr = [];
+        let cameraHelpersVisibleState = null;
+        let cameraHelpersNeedUpdate = true;
         let cameraMarkers = null;
         let selectedCameraIndex = 0;
         const clickRaycaster = new THREE.Raycaster();
@@ -4935,6 +5010,8 @@
         let hdriBaseColors = null;
         let hdriBaseColorsDirty = true;
         let hdriPreviewDirty = true;
+        let olatPreviewDirty = true;
+        let olatPreviewSignature = '';
         let hdriEnvMapTexture = null;
         let customHdriCache = { custom1: null, custom2: null };
         let brdfPreviewDirty = true;
@@ -4948,6 +5025,174 @@
         const allWarmupDurationMs = 1000;
         let allHdriSteps = 0;
         let allBrdfSteps = 0;
+
+        const previewRendererSizes = new WeakMap();
+        const previewCameraProjections = new WeakMap();
+        let illuminationLightsDirty = true;
+        let illuminationSyncSignature = '';
+
+        function setStyleIfChanged(element, property, value) {
+            if (!element || element.style[property] === value) return;
+            element.style[property] = value;
+        }
+
+        function setHtmlIfChanged(element, value) {
+            if (!element || element.innerHTML === value) return;
+            element.innerHTML = value;
+        }
+
+        function setCanvasSizeIfChanged(canvas, width, height) {
+            if (!canvas) return false;
+            const nextWidth = Math.max(1, Math.floor(width));
+            const nextHeight = Math.max(1, Math.floor(height));
+            const changed = canvas.width !== nextWidth || canvas.height !== nextHeight;
+            if (changed) {
+                canvas.width = nextWidth;
+                canvas.height = nextHeight;
+            }
+            return changed;
+        }
+
+        function setElementBox(element, left, top, width, height) {
+            if (!element) return;
+            setStyleIfChanged(element, 'left', `${Math.floor(left)}px`);
+            setStyleIfChanged(element, 'top', `${Math.floor(top)}px`);
+            setStyleIfChanged(element, 'width', `${Math.floor(width)}px`);
+            setStyleIfChanged(element, 'height', `${Math.floor(height)}px`);
+        }
+
+        function setRendererSizeIfChanged(renderer, width, height) {
+            if (!renderer) return;
+            const nextWidth = Math.max(1, Math.floor(width));
+            const nextHeight = Math.max(1, Math.floor(height));
+            const prev = previewRendererSizes.get(renderer);
+            if (prev && prev.width === nextWidth && prev.height === nextHeight) return;
+            renderer.setSize(nextWidth, nextHeight, false);
+            previewRendererSizes.set(renderer, { width: nextWidth, height: nextHeight });
+        }
+
+        function renderOverlaySceneWithMainRenderer(sceneToRender, cameraToRender, left, top, width, height) {
+            if (!renderer || !sceneToRender || !cameraToRender) return;
+            const x = Math.max(0, Math.floor(left));
+            const y = Math.max(0, Math.floor(window.innerHeight - top - height));
+            const w = Math.max(1, Math.floor(width));
+            const h = Math.max(1, Math.floor(height));
+            const prevAutoClear = renderer.autoClear;
+            renderer.autoClear = false;
+            renderer.setScissorTest(true);
+            renderer.setScissor(x, y, w, h);
+            renderer.setViewport(x, y, w, h);
+            renderer.clearDepth();
+            renderer.render(sceneToRender, cameraToRender);
+            renderer.setScissorTest(false);
+            renderer.autoClear = prevAutoClear;
+        }
+
+        function setPerspectiveProjectionIfChanged(cameraToUpdate, fov, aspect, near, far) {
+            if (!cameraToUpdate) return;
+            const nextFov = Number.isFinite(fov) ? fov : cameraToUpdate.fov;
+            const nextAspect = Number.isFinite(aspect) ? aspect : cameraToUpdate.aspect;
+            const nextNear = Number.isFinite(near) ? near : cameraToUpdate.near;
+            const nextFar = Number.isFinite(far) ? far : cameraToUpdate.far;
+            const prev = previewCameraProjections.get(cameraToUpdate);
+            if (
+                prev
+                && prev.fov === nextFov
+                && prev.aspect === nextAspect
+                && prev.near === nextNear
+                && prev.far === nextFar
+            ) {
+                return;
+            }
+            cameraToUpdate.fov = nextFov;
+            cameraToUpdate.aspect = nextAspect;
+            cameraToUpdate.near = nextNear;
+            cameraToUpdate.far = nextFar;
+            cameraToUpdate.updateProjectionMatrix();
+            previewCameraProjections.set(cameraToUpdate, {
+                fov: nextFov,
+                aspect: nextAspect,
+                near: nextNear,
+                far: nextFar,
+            });
+        }
+
+        function markCameraHelpersDirty() {
+            cameraHelpersNeedUpdate = true;
+        }
+
+        function syncCameraHelperVisibility() {
+            const visible = !!(args && args.render && args.render.camera && args.render.camera.showCamera);
+            if (cameraHelpersVisibleState !== visible) {
+                cameraHelpersArr.forEach(h => {
+                    if (h) h.visible = visible;
+                });
+                if (cameraMarkers) cameraMarkers.visible = visible;
+                cameraHelpersVisibleState = visible;
+            }
+            if (cameraHelpersNeedUpdate) {
+                cameraHelpersArr.forEach(h => {
+                    if (h) h.update();
+                });
+                cameraHelpersNeedUpdate = false;
+            }
+        }
+
+        function markIlluminationLightsDirty() {
+            illuminationLightsDirty = true;
+        }
+
+        function getIlluminationSyncSignature() {
+            const patterns = args.lightstage.patterns;
+            return [
+                lightboardRefsVersion,
+                patterns.active,
+                allPhase,
+                patterns.idx,
+                patterns.hdriPattern,
+                patterns.olatColor,
+                patterns.olatIntensity,
+                patterns.hdriIntensity,
+                patterns.hdriLightIntensity,
+                patterns.hdriContrast,
+                patterns.hdriHorizontalRotation,
+                patterns.hdriVerticalRotation,
+            ].join('|');
+        }
+
+        function getOlatPreviewSignature(width, height) {
+            const patterns = args.lightstage.patterns;
+            const hdriKey = hdriCache
+                ? `${hdriCache.pattern || ''}:${hdriCache.width || 0}x${hdriCache.height || 0}`
+                : '';
+            return [
+                width,
+                height,
+                lightboardRefsVersion,
+                patterns.active,
+                allPhase,
+                patterns.idx,
+                patterns.hdriPattern,
+                patterns.olatColor,
+                patterns.olatIntensity,
+                patterns.hdriIntensity,
+                patterns.hdriLightIntensity,
+                patterns.hdriContrast,
+                patterns.hdriHorizontalRotation,
+                patterns.hdriVerticalRotation,
+                hdriKey,
+                hdriAssignmentWidth,
+                hdriAssignmentHeight,
+                hdriBaseColorsDirty ? 1 : 0,
+                hdriAssignmentDirty ? 1 : 0,
+            ].join('|');
+        }
+
+        function markPatternPreviewDirty() {
+            hdriPreviewDirty = true;
+            olatPreviewDirty = true;
+            markIlluminationLightsDirty();
+        }
 
         let render_mode = 'points';
         const args_init = {
@@ -5263,6 +5508,8 @@
                 cameraHelpersArr.forEach(h => scene.remove(h));
                 cameraHelpersArr = [];
             }
+            cameraHelpersVisibleState = null;
+            cameraHelpersNeedUpdate = true;
             if (cameraMarkers) {
                 scene.remove(cameraMarkers);
                 cameraMarkers = null;
@@ -5348,6 +5595,8 @@
             });
 
             scene.add(cameraMarkers);
+            markCameraHelpersDirty();
+            syncCameraHelperVisibility();
         }
 
         function selectCamera(idx) {
@@ -5370,6 +5619,7 @@
                     cameraViews[i].far = (i === idx) ? args.render.camera.cameraFar : 0.001;
                     cameraViews[i].updateProjectionMatrix();
                 }
+                h.update();
             });
             cameraMarkers.children.forEach((m, i) => {
                 m.material.color.set(i === idx ? 0xffff00 : 0xffffff);
