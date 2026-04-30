@@ -61,7 +61,21 @@
             pointer-events: none;
             z-index: 5;
             opacity: 1;
-            transition: opacity 0.45s ease;
+            transform-origin: 50% 50%;
+            animation: bootPreviewDrift 4.8s linear infinite;
+            transition: opacity 0.45s ease, transform 0.35s ease;
+            will-change: transform, opacity;
+        }
+
+        #bootPreviewCanvas.boot-settling {
+            animation: none;
+            transform: none;
+        }
+
+        @keyframes bootPreviewDrift {
+            0% { transform: rotate(0deg) scale(1); }
+            50% { transform: rotate(2.2deg) scale(1.015); }
+            100% { transform: rotate(0deg) scale(1); }
         }
 
         /* avoid empty links */
@@ -144,6 +158,8 @@
             let fadeStarted = false;
             let bootTargetProgress = 0;
             let bootDisplayProgress = 0;
+            let boardTargetProgress = [];
+            let boardDisplayProgress = [];
             let cachedOrderLength = 0;
             let cachedOrder = [];
             const minBootPreviewMs = 2600;
@@ -240,6 +256,13 @@
 
             function setBootBuildProgress(progress) {
                 bootTargetProgress = Math.max(bootTargetProgress, clamp01(progress));
+                if (bootTargetProgress > 0.01) canvas.classList.add('boot-settling');
+            }
+
+            function setBootBoardProgress(index, progress) {
+                const boardProgress = clamp01(progress);
+                boardTargetProgress[index] = Math.max(boardTargetProgress[index] || 0, boardProgress);
+                if (boardProgress > 0.01) canvas.classList.add('boot-settling');
             }
 
             function startBootFade() {
@@ -335,9 +358,16 @@
                 for (let i = 0; i < revealCount; i++) {
                     const sourceIndex = order[i];
                     const target = positions[sourceIndex];
+                    const targetBoardProgress = boardTargetProgress[sourceIndex] || 0;
+                    const currentBoardProgress = boardDisplayProgress[sourceIndex] || 0;
+                    const boardProgress = currentBoardProgress
+                        + (targetBoardProgress - currentBoardProgress) * Math.min(1, frameDelta * 6.5);
+                    boardDisplayProgress[sourceIndex] = boardProgress;
                     const flight = getFlightPosition(target, sourceIndex, elapsed);
                     const localDelay = i / Math.max(1, revealCount) * 0.14;
-                    const morph = smoothstep(0.02 + localDelay, 0.94 + localDelay, bootDisplayProgress);
+                    const boardMorph = smoothstep(0.02 + localDelay, 0.86 + localDelay, boardProgress);
+                    const finalSettle = finishRequested ? smoothstep(0.96, 1, bootDisplayProgress) : 0;
+                    const morph = Math.max(boardMorph, finalSettle);
                     const localReveal = smoothstep(0.0, 0.18, elapsed - i / 120);
                     const point = [
                         lerp(flight[0], target[0], morph),
@@ -346,13 +376,17 @@
                     ];
                     const projected = projectBootPoint(point);
                     const targetProjected = projectBootPoint(target);
-                    const screenSettle = smoothstep(0.65, 1, bootDisplayProgress);
+                    const screenSettle = Math.max(
+                        smoothstep(0.72, 1, boardProgress),
+                        finalSettle
+                    );
                     const x = lerp(projected.x, targetProjected.x, screenSettle);
                     const y = lerp(projected.y, targetProjected.y, screenSettle);
                     const depth = Math.max(0.25, projected.depth);
                     const alivePulse = 1 + Math.sin(elapsed * 2.2 + sourceIndex * 0.13) * (finishRequested ? 0.015 : 0.075);
                     const radius = (1.6 + depth * 3.0) * (0.55 + localReveal * 0.45) * alivePulse;
-                    const alpha = Math.min(0.9, (0.16 + depth * 0.58) * localReveal);
+                    const boardFade = 1 - smoothstep(0.78, 1, boardProgress);
+                    const alpha = Math.min(0.9, (0.16 + depth * 0.58) * localReveal * Math.max(0.12, boardFade));
                     const channel = sourceIndex % 6;
                     const color = channel === 1 ? '255,80,70'
                         : channel === 3 ? '80,255,130'
@@ -395,6 +429,20 @@
                 setBootBuildProgress(completed / denominator);
             };
 
+            window.__setBootPreviewBoardProgress = function (index, progress) {
+                if (!running) return;
+                setBootBoardProgress(index, progress);
+                let activeCount = 0;
+                let progressSum = 0;
+                for (let i = 0; i < boardTargetProgress.length; i++) {
+                    const value = boardTargetProgress[i];
+                    if (value === undefined) continue;
+                    activeCount++;
+                    progressSum += value;
+                }
+                if (activeCount > 0) setBootBuildProgress(progressSum / activeCount);
+            };
+
             resizeBootPreview();
             window.addEventListener('resize', resizeBootPreview, { passive: true });
             drawBootPreview(performance.now());
@@ -405,7 +453,6 @@
           "imports": {
             "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
             "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/",
-            "three/nodes": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/nodes/Nodes.js",
             "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.esm.min.js",
             "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.3/build/index.module.js"
           }
@@ -419,10 +466,6 @@
         import GUI from 'lil-gui';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import WebGPU from 'three/addons/capabilities/WebGPU.js';
-        import WebGL from 'three/addons/capabilities/WebGL.js';
-        import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js';
-        import { color, lights, normalMap, MeshPhongNodeMaterial } from 'three/nodes';
         import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
         function init() {
@@ -440,7 +483,6 @@
             cameraObject.position.z = 0.6;
             cameraObject.updateProjectionMatrix();
             renderer = new THREE.WebGLRenderer();
-            // renderer = new WebGPURenderer();
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
             window.__projectBootLightStagePoint = function (point) {
@@ -1410,14 +1452,27 @@
 
         function updateLightStageReveal() {
             if (!lightboards || !lightboards.children) return;
+            let hasReveal = false;
+            let allRevealed = true;
             lightboards.children.forEach((lightboard) => {
                 if (!lightboard || !lightboard.userData || lightboard.userData.revealProgress === undefined) return;
+                hasReveal = true;
                 if (lightboard.userData.revealProgress >= 1) return;
                 lightboard.userData.revealProgress = Math.min(1, lightboard.userData.revealProgress + 0.12);
                 const t = lightboard.userData.revealProgress;
                 const eased = 1 - Math.pow(1 - t, 3);
                 lightboard.scale.setScalar(THREE.MathUtils.lerp(0.2, 1, eased));
+                if (typeof window.__setBootPreviewBoardProgress === 'function') {
+                    window.__setBootPreviewBoardProgress(lightboard.userData.stageIndex || 0, t);
+                }
+                if (lightboard.userData.revealProgress < 1) allRevealed = false;
             });
+            if (hasReveal && allRevealed && !lightStageBuildInProgress && !lightStageRevealCompleteNotified) {
+                lightStageRevealCompleteNotified = true;
+                if (typeof window.__finishBootPreview === 'function') {
+                    window.__finishBootPreview();
+                }
+            }
         }
 
         function getLightStageCacheSnapshot() {
@@ -1444,6 +1499,7 @@
         function setupLightStage(reset=false, options={}) {
             const asyncBuild = !!(options && options.asyncBuild);
             const buildToken = ++lightStageBuildToken;
+            lightStageRevealCompleteNotified = false;
             const prevLightboards = lightboards;
             const prevRig = rig;
 
@@ -1644,6 +1700,9 @@
                 if (asyncBuild) {
                     lightboard.userData.revealProgress = 0;
                     lightboard.scale.setScalar(0.2);
+                    if (typeof window.__setBootPreviewBoardProgress === 'function') {
+                        window.__setBootPreviewBoardProgress(sourceIndex, 0.04);
+                    }
                 }
                 nextLightboards.add(lightboard);
             };
@@ -1704,12 +1763,7 @@
                     setupIlluminationPreview();
                 }
 
-                if (typeof window.__finishBootPreview === 'function') {
-                    if (typeof window.__setBootPreviewBuildProgress === 'function') {
-                        window.__setBootPreviewBuildProgress(positions.length, positions.length);
-                    }
-                    window.__finishBootPreview();
-                }
+                updateLightStageReveal();
             };
 
             if (asyncBuild) {
@@ -4793,6 +4847,7 @@
         let lightStageBuildToken = 0;
         let lightStageBuildInProgress = false;
         let lightStageTargetBoardCount = 0;
+        let lightStageRevealCompleteNotified = false;
         const maxBulkPointLights = 64;
         let axesHelper;
         let axesLabelGroup;
