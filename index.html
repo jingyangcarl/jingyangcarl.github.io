@@ -245,9 +245,9 @@
                 const textCtx = textCanvas.getContext('2d', { willReadFrequently: true });
                 if (!textCtx) return [];
 
-                const maxLineWidth = Math.max(260, Math.min(width * 0.86, 940));
-                let titleSize = Math.max(18, Math.min(60, width * 0.052, height * 0.09));
-                let subtitleSize = titleSize * 0.44;
+                const maxLineWidth = Math.max(300, Math.min(width * 0.9, 1040));
+                let titleSize = Math.max(20, Math.min(72, width * 0.064, height * 0.1));
+                let subtitleSize = titleSize * 0.46;
                 const title = 'The Algorithmic Aura';
                 const subtitle = '(CVPR 2026 Art)';
                 const setFonts = () => {
@@ -260,23 +260,29 @@
 
                 while (titleSize > 18 && setFonts() > maxLineWidth) {
                     titleSize *= 0.92;
-                    subtitleSize = titleSize * 0.44;
+                    subtitleSize = titleSize * 0.46;
                 }
 
                 const textWidth = Math.ceil(Math.min(maxLineWidth, setFonts() + titleSize * 0.95));
-                const textHeight = Math.ceil(titleSize * 1.95);
+                const textHeight = Math.ceil(titleSize * 2.05);
                 textCanvas.width = Math.max(1, textWidth);
                 textCanvas.height = Math.max(1, textHeight);
                 textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
                 textCtx.textAlign = 'center';
                 textCtx.textBaseline = 'middle';
                 textCtx.fillStyle = '#ffffff';
+                textCtx.strokeStyle = '#ffffff';
+                textCtx.lineJoin = 'round';
+                textCtx.lineWidth = Math.max(1.5, titleSize * 0.05);
                 textCtx.font = `700 ${titleSize}px Monospace`;
+                textCtx.strokeText(title, textCanvas.width * 0.5, titleSize * 0.72);
                 textCtx.fillText(title, textCanvas.width * 0.5, titleSize * 0.72);
                 textCtx.font = `600 ${subtitleSize}px Monospace`;
-                textCtx.fillText(subtitle, textCanvas.width * 0.5, titleSize * 1.42);
+                textCtx.lineWidth = Math.max(1.2, subtitleSize * 0.06);
+                textCtx.strokeText(subtitle, textCanvas.width * 0.5, titleSize * 1.44);
+                textCtx.fillText(subtitle, textCanvas.width * 0.5, titleSize * 1.44);
 
-                const sampleStep = Math.max(1, Math.round(titleSize / 28));
+                const sampleStep = 1;
                 const imageData = textCtx.getImageData(0, 0, textCanvas.width, textCanvas.height).data;
                 const candidates = [];
                 for (let y = 0; y < textCanvas.height; y += sampleStep) {
@@ -300,7 +306,7 @@
                         const seed = hashUnit((candidate.x + 19) * 12.9898 + (candidate.y + 31) * 78.233 + i * 0.37);
                         const nx = (candidate.x / Math.max(1, textCanvas.width)) * 2 - 1;
                         const ny = (candidate.y / Math.max(1, textCanvas.height)) * 2 - 1;
-                        const jitter = sampleStep * 0.12;
+                        const jitter = sampleStep * 0.08;
                         points.push({
                             x: originX + candidate.x + (seed - 0.5) * jitter,
                             y: originY + candidate.y + (hashUnit(seed * 91.7 + i) - 0.5) * jitter,
@@ -424,7 +430,7 @@
                 if (!running) return;
 
                 const positions = getBootPositions();
-                const particleCount = Math.max(positions.length, Math.min(2400, positions.length * 9));
+                const particleCount = Math.max(positions.length, Math.min(5200, positions.length * 21));
                 const order = getProgressiveOrder(particleCount);
                 const elapsed = Math.max(0.42, (now - startTime) / 1000);
                 const frameDelta = Math.min(0.25, Math.max(0, (now - lastFrameTime) / 1000));
@@ -449,7 +455,7 @@
                 }
                 const revealCount = Math.min(
                     particleCount,
-                    Math.max(220, Math.floor(220 + elapsed * 1000))
+                    Math.max(320, Math.floor(320 + elapsed * 2100))
                 );
                 const textPoints = getBootTextPoints(particleCount);
 
@@ -462,6 +468,7 @@
                     ctx.fillRect(0, 0, width, height);
                 }
                 const drawItems = [];
+                const particleRevealRate = Math.max(900, particleCount / 2.1);
                 for (let i = 0; i < revealCount; i++) {
                     const particleIndex = order[i];
                     const sourceIndex = particleIndex % positions.length;
@@ -475,7 +482,7 @@
                     const localDelay = i / Math.max(1, revealCount) * 0.14;
                     const textMorph = smoothstep(0.12 + localDelay, 1.24 + localDelay, elapsed);
                     const ledFly = finishRequested ? smoothstep(0.02 + localDelay * 0.65, 0.96 + localDelay * 0.65, finishElapsed) : 0;
-                    const localReveal = smoothstep(0.0, 0.18, elapsed - i / 120);
+                    const localReveal = smoothstep(0.0, 0.18, elapsed - i / particleRevealRate);
                     const textPoint = textPoints[particleIndex] || textPoints[i % Math.max(1, textPoints.length)];
                     const projected = projectBootPoint(flight);
                     const targetProjected = projectBootPoint(target);
@@ -500,13 +507,13 @@
                     const perspectiveSize = 0.55 + depthSize * 3.25 + rim * 0.45;
                     const textHold = textMorph * (1 - ledFly);
                     const baseRadius = perspectiveSize * (0.52 + localReveal * 0.48) * alivePulse * sizeJitter;
-                    const textRadius = 0.72 + textDepth * 0.58;
+                    const textRadius = 0.78 + textDepth * 0.48;
                     const radius = lerp(baseRadius, textRadius, textHold * 0.86);
                     const boardFade = 1 - smoothstep(0.84, 1, ledFly);
                     const baseAlpha = (0.045 + depthSize * 0.62 + rim * 0.08) * localReveal * Math.max(0.1, boardFade);
-                    const alpha = Math.min(0.98, baseAlpha * (1 + textHold * 0.45) + textHold * localReveal * 0.3);
+                    const alpha = Math.min(0.98, baseAlpha * (1 + textHold * 0.45) + textHold * localReveal * 0.48);
                     const channel = particleIndex % 6;
-                    const titleWhite = textHold > 0.5 && channel !== 1 && channel !== 3 && channel !== 5;
+                    const titleWhite = textHold > 0.5;
                     const color = titleWhite ? '238,246,255'
                         : channel === 1 ? '255,80,70'
                             : channel === 3 ? '80,255,130'
@@ -527,7 +534,9 @@
                     });
                 }
 
-                drawItems.sort((a, b) => a.visualDepth - b.visualDepth);
+                if (finishFlyProgress > 0.02) {
+                    drawItems.sort((a, b) => a.visualDepth - b.visualDepth);
+                }
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
                 drawItems.forEach((item) => {
