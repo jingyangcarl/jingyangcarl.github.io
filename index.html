@@ -985,6 +985,12 @@
             }).name('HDRI Pattern').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
             window.hdriIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriIntensity', 0, 5, 0.1).name('HDRI Intensity').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
             window.hdriLightIntensityCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriLightIntensity', 0, 5, 0.1).name('HDRI Light Intensity').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
+            window.hdriOlatLightBudgetCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriOlatLightBudget', 8, maxBulkPointLights, 1).name('HDRI OLAT Lights').onChange(() => {
+                hdriDirty = true;
+                markHdriOlatProgramWarmupDirty();
+                scheduleHdriOlatProgramWarmup(120);
+                markPatternPreviewDirty();
+            }).listen();
             window.hdriContrastCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriContrast', 0.1, 3, 0.1).name('HDRI Contrast').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
             window.hdriHorizontalRotationCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriHorizontalRotation', 0, 720, 1).name('HDRI Horizontal Rotation').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
             window.hdriVerticalRotationCtrl = gui_ls_patterns.add(args.lightstage.patterns, 'hdriVerticalRotation', -180, 180, 1).name('HDRI Vertical Rotation').onChange(() => { hdriDirty = true; markPatternPreviewDirty(); }).listen();
@@ -1013,6 +1019,7 @@
                 if (window.hdriPatternCtrl) window.hdriPatternCtrl.domElement.style.display = (!isAll && showHdri) ? '' : 'none';
                 if (window.hdriIntensityCtrl) window.hdriIntensityCtrl.domElement.style.display = (!isAll && showHdri) ? '' : 'none';
                 if (window.hdriLightIntensityCtrl) window.hdriLightIntensityCtrl.domElement.style.display = (!isAll && isHdri) ? '' : 'none';
+                if (window.hdriOlatLightBudgetCtrl) window.hdriOlatLightBudgetCtrl.domElement.style.display = (!isAll && isHdri) ? '' : 'none';
                 if (window.hdriContrastCtrl) window.hdriContrastCtrl.domElement.style.display = (!isAll && showHdri) ? '' : 'none';
                 if (window.hdriHorizontalRotationCtrl) window.hdriHorizontalRotationCtrl.domElement.style.display = (!isAll && showHdri) ? '' : 'none';
                 if (window.hdriVerticalRotationCtrl) window.hdriVerticalRotationCtrl.domElement.style.display = (!isAll && showHdri) ? '' : 'none';
@@ -1104,6 +1111,7 @@
             gui_ls_object_bvh.add( args.render.rayCaster.rays, 'count', 0, args.render.rayCaster.rays.maxNum, 1).name('Ray Count').listen();
             gui_ls_object_bvh.add( args.render.rayCaster, 'displayHelper').name('Show BVH').listen();
             gui_ls_object_bvh.add( args.render.rayCaster, 'helperDepth', 1, 20, 1).name('BVH Depth').onChange(v => {
+                if (!helper) return;
                 helper.depth = v;
                 if (helper.visible) helper.update();
             } ).listen();
@@ -1789,12 +1797,14 @@
                 lightStageBuildInProgress = false;
                 lightStageTargetBoardCount = 0;
                 rebuildLightboardRefs();
+                markHdriOlatProgramWarmupDirty();
 
                 if (reset && typeof setupIlluminationPreview === 'function') {
                     setupIlluminationPreview();
                 } else if (!reset && illuminationSceneGrey && illuminationSceneChrome && typeof setupIlluminationPreview === 'function') {
                     setupIlluminationPreview();
                 }
+                scheduleHdriOlatProgramWarmup(120);
 
                 updateLightStageReveal();
             };
@@ -1889,10 +1899,10 @@
         }
 
         function disposeCurrentMesh() {
-            if (helper) {
-                scene.remove(helper);
-                helper = null;
-            }
+            bvhBuildToken++;
+            bvhBuildScheduled = false;
+            bvhBuildRunning = false;
+            disposeBvhHelper();
             if (mesh) {
                 scene.remove(mesh);
                 if (mesh.geometry && mesh.geometry.disposeBoundsTree) {
@@ -1934,6 +1944,51 @@
             }
         }
 
+        function disposeBvhHelper() {
+            if (!helper) return;
+            scene.remove(helper);
+            if (helper.dispose) helper.dispose();
+            helper = null;
+        }
+
+        function createBvhHelperForMesh(targetMesh) {
+            if (!targetMesh || !targetMesh.geometry || !targetMesh.geometry.boundsTree) return;
+            disposeBvhHelper();
+            helper = new MeshBVHHelper(targetMesh);
+            helper.color.set('lightgreen');
+            helper.depth = args.render.rayCaster.helperDepth;
+            helper.visible = args.render.rayCaster.displayHelper;
+            scene.add(helper);
+        }
+
+        function scheduleBvhBuildForMesh(targetMesh, delayMs=6500) {
+            if (!targetMesh || !targetMesh.geometry || !args.render.rayCaster.useBVH) return;
+            const token = ++bvhBuildToken;
+            bvhBuildScheduled = true;
+            bvhBuildRunning = false;
+            const build = () => {
+                if (token !== bvhBuildToken || targetMesh !== mesh || !targetMesh.geometry) return;
+                bvhBuildScheduled = false;
+                bvhBuildRunning = true;
+                try {
+                    targetMesh.geometry.computeBoundsTree();
+                    if (token !== bvhBuildToken || targetMesh !== mesh) return;
+                    bvh = targetMesh.geometry.boundsTree;
+                    createBvhHelperForMesh(targetMesh);
+                } finally {
+                    bvhBuildRunning = false;
+                }
+            };
+            window.setTimeout(() => {
+                if (token !== bvhBuildToken || targetMesh !== mesh) return;
+                if ('requestIdleCallback' in window) {
+                    window.requestIdleCallback(build, { timeout: 9000 });
+                } else {
+                    window.setTimeout(build, 0);
+                }
+            }, delayMs);
+        }
+
         function smoothMeshForRendering(targetMesh) {
             if (!targetMesh) return;
 
@@ -1969,10 +2024,8 @@
             }
 
             const geometry = mesh.geometry;
-            geometry.computeBoundsTree();
-            bvh = geometry.boundsTree;
-
-            if ( ! args.render.rayCaster.useBVH ) {
+            bvh = null;
+            if (!args.render.rayCaster.useBVH) {
                 geometry.boundsTree = null;
             }
 
@@ -1980,10 +2033,8 @@
             const bbox = new THREE.Box3().setFromObject(mesh);
             bbox.getCenter(objectTarget);
 
-            helper = new MeshBVHHelper( mesh );
-            helper.color.set( 'lightgreen' );
-            helper.visible = args.render.rayCaster.displayHelper;
-            scene.add( helper );
+            disposeBvhHelper();
+            scheduleBvhBuildForMesh(mesh);
 
             // recreate camera views now that we know the object target
             if (typeof createCameraViews === 'function') {
@@ -2155,6 +2206,8 @@
                     mesh.material = mesh.userData.importedMaterials;
                 }
                 brdfPreviewDirty = true;
+                markHdriOlatProgramWarmupDirty();
+                scheduleHdriOlatProgramWarmup(250);
                 return;
             }
             const brdf = args.lightstage.object.material.brdf;
@@ -2243,6 +2296,8 @@
             });
 
             brdfPreviewDirty = true;
+            markHdriOlatProgramWarmupDirty();
+            scheduleHdriOlatProgramWarmup(250);
         }
 
         function getBrdfDebugMaterial(view) {
@@ -2422,7 +2477,149 @@
             const count = lightboardRefs && lightboardRefs.length
                 ? lightboardRefs.length
                 : (lightboards && lightboards.children ? lightboards.children.length : 0);
-            return Math.max(0, Math.min(count, maxBulkPointLights));
+            const configuredBudget = args
+                && args.lightstage
+                && args.lightstage.patterns
+                && Number.isFinite(args.lightstage.patterns.hdriOlatLightBudget)
+                    ? Math.round(args.lightstage.patterns.hdriOlatLightBudget)
+                    : maxBulkPointLights;
+            return Math.max(0, Math.min(count, maxBulkPointLights, configuredBudget));
+        }
+
+        function markHdriOlatProgramWarmupDirty() {
+            hdriOlatProgramWarmupToken++;
+            hdriOlatProgramWarmupDone = false;
+            hdriOlatProgramWarmupScheduled = false;
+            hdriOlatProgramWarmupRunning = false;
+        }
+
+        function capturePointLightStates(lights, budget) {
+            const states = [];
+            const count = Math.min(budget, lights.length);
+            for (let i = 0; i < count; i++) {
+                const light = lights[i];
+                if (!light) continue;
+                states.push({
+                    light,
+                    visible: light.visible,
+                    intensity: light.intensity,
+                    power: light.power,
+                    color: light.color.clone(),
+                });
+                light.visible = true;
+                light.color.setRGB(1, 1, 1);
+                light.power = 0;
+                light.intensity = 0.001;
+            }
+            return states;
+        }
+
+        function restorePointLightStates(states) {
+            states.forEach((state) => {
+                state.light.visible = state.visible;
+                state.light.color.copy(state.color);
+                state.light.intensity = state.intensity;
+                state.light.power = state.power;
+            });
+        }
+
+        function collectLightboardPointLights() {
+            if (!lightboardRefs || lightboardRefs.length === 0) return [];
+            return lightboardRefs
+                .map(ref => ref && ref.ledLight)
+                .filter(Boolean);
+        }
+
+        function canWarmupHdriOlatPrograms() {
+            return !!(
+                renderer
+                && typeof renderer.compile === 'function'
+                && scene
+                && camera
+                && lightboardRefs
+                && lightboardRefs.length > 0
+                && getHdriOlatPointLightBudget() > 0
+            );
+        }
+
+        function compileSceneWithTemporaryLights(sceneToCompile, cameraToCompile, lights, budget) {
+            if (!renderer || !sceneToCompile || !cameraToCompile || !lights || lights.length === 0) return;
+            const states = capturePointLightStates(lights, budget);
+            const prevAutoClear = renderer.autoClear;
+            const prevScissorTest = renderer.getScissorTest();
+            const prevViewport = renderer.getViewport(new THREE.Vector4());
+            const prevScissor = renderer.getScissor(new THREE.Vector4());
+            try {
+                renderer.compile(sceneToCompile, cameraToCompile);
+                renderer.autoClear = false;
+                renderer.setScissorTest(true);
+                renderer.setScissor(0, 0, 1, 1);
+                renderer.setViewport(0, 0, 1, 1);
+                renderer.clearDepth();
+                renderer.render(sceneToCompile, cameraToCompile);
+            } catch (err) {
+                console.warn('HDRI OLAT shader prewarm failed', err);
+            } finally {
+                renderer.setViewport(prevViewport);
+                renderer.setScissor(prevScissor);
+                renderer.setScissorTest(prevScissorTest);
+                renderer.autoClear = prevAutoClear;
+                restorePointLightStates(states);
+            }
+        }
+
+        function runHdriOlatProgramWarmupStep(step) {
+            const budget = getHdriOlatPointLightBudget();
+            if (budget <= 0) return;
+            if (step === 'main') {
+                compileSceneWithTemporaryLights(scene, camera, collectLightboardPointLights(), budget);
+            } else if (step === 'grey' && illuminationSceneGrey && illuminationCameraGrey) {
+                compileSceneWithTemporaryLights(illuminationSceneGrey, illuminationCameraGrey, illuminationLightsGrey, budget);
+            } else if (step === 'chrome' && illuminationSceneChrome && illuminationCameraChrome) {
+                compileSceneWithTemporaryLights(illuminationSceneChrome, illuminationCameraChrome, illuminationLightsChrome, budget);
+            }
+            markIlluminationLightsDirty();
+        }
+
+        function scheduleHdriOlatProgramWarmup(delayMs=0) {
+            if (hdriOlatProgramWarmupDone || hdriOlatProgramWarmupScheduled || hdriOlatProgramWarmupRunning) return;
+            if (!canWarmupHdriOlatPrograms()) return;
+            hdriOlatProgramWarmupScheduled = true;
+            const token = hdriOlatProgramWarmupToken;
+            const start = () => {
+                if (token !== hdriOlatProgramWarmupToken) return;
+                if (!canWarmupHdriOlatPrograms()) {
+                    hdriOlatProgramWarmupScheduled = false;
+                    return;
+                }
+                hdriOlatProgramWarmupScheduled = false;
+                hdriOlatProgramWarmupRunning = true;
+                const steps = ['main', 'grey', 'chrome'];
+                let stepIndex = 0;
+                const runNext = () => {
+                    if (token !== hdriOlatProgramWarmupToken) return;
+                    if (stepIndex >= steps.length) {
+                        hdriOlatProgramWarmupDone = true;
+                        hdriOlatProgramWarmupRunning = false;
+                        return;
+                    }
+                    const step = steps[stepIndex++];
+                    requestAnimationFrame(() => {
+                        runHdriOlatProgramWarmupStep(step);
+                        window.setTimeout(runNext, 80);
+                    });
+                };
+                runNext();
+            };
+            if ('requestIdleCallback' in window) {
+                window.requestIdleCallback(() => window.setTimeout(start, delayMs), { timeout: 1200 });
+            } else {
+                window.setTimeout(start, delayMs);
+            }
+        }
+
+        function hdriOlatProgramWarmupReady() {
+            return hdriOlatProgramWarmupDone || !canWarmupHdriOlatPrograms();
         }
 
         function setPhysicalLightVisible(ledLight, visible, bulk=false) {
@@ -3168,11 +3365,28 @@
             if (hasScheduledGlbPreload) return;
             hasScheduledGlbPreload = true;
 
-            const startPreload = () => preloadGlbAssets();
+            const startPreload = () => {
+                const waitForInitialScene = () => {
+                    const stillBooting = isModelLoading
+                        || lightStageBuildInProgress
+                        || hdriOlatProgramWarmupScheduled
+                        || hdriOlatProgramWarmupRunning;
+                    if (stillBooting) {
+                        window.setTimeout(waitForInitialScene, 1000);
+                        return;
+                    }
+                    if (document.visibilityState !== 'hidden') {
+                        window.setTimeout(waitForInitialScene, 15000);
+                        return;
+                    }
+                    preloadGlbAssets();
+                };
+                window.setTimeout(waitForInitialScene, 6000);
+            };
             if ('requestIdleCallback' in window) {
-                window.requestIdleCallback(startPreload, { timeout: 4000 });
+                window.requestIdleCallback(startPreload, { timeout: 12000 });
             } else {
-                window.setTimeout(startPreload, 2500);
+                window.setTimeout(startPreload, 9000);
             }
         }
 
@@ -3762,6 +3976,11 @@
                     clearNonOlatLighting();
                     const warmupDone = handleWarmupPattern(curr, true);
                     if (warmupDone) {
+                        if (!hdriOlatProgramWarmupReady()) {
+                            scheduleHdriOlatProgramWarmup();
+                            allWarmupStart = curr - allWarmupDurationMs + 150;
+                            return;
+                        }
                         allPhase = 'hdri';
                         allHdriSteps = 0;
                         hdriDirty = true;
@@ -4997,6 +5216,9 @@
         let controls;
         let saveRenderer;
         let mesh, helper, bvh;
+        let bvhBuildToken = 0;
+        let bvhBuildScheduled = false;
+        let bvhBuildRunning = false;
         let modelLoadToken = 0;
         let sphereInstance, lineSegments, sphereLabels;
         let insetWidth, insetHeight;
@@ -5047,6 +5269,10 @@
         const allWarmupDurationMs = 1000;
         let allHdriSteps = 0;
         let allBrdfSteps = 0;
+        let hdriOlatProgramWarmupDone = false;
+        let hdriOlatProgramWarmupScheduled = false;
+        let hdriOlatProgramWarmupRunning = false;
+        let hdriOlatProgramWarmupToken = 0;
 
         const previewRendererSizes = new WeakMap();
         const previewCameraProjections = new WeakMap();
@@ -5176,6 +5402,7 @@
                 patterns.olatIntensity,
                 patterns.hdriIntensity,
                 patterns.hdriLightIntensity,
+                patterns.hdriOlatLightBudget,
                 patterns.hdriContrast,
                 patterns.hdriHorizontalRotation,
                 patterns.hdriVerticalRotation,
@@ -5294,6 +5521,7 @@
                     hdriPattern: 'gradient',
                     hdriIntensity: 1.0,
                     hdriLightIntensity: 1.0,
+                    hdriOlatLightBudget: 24,
                     hdriContrast: 0.3,
                     hdriHorizontalRotation: 0,
                     hdriVerticalRotation: 0,
