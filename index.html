@@ -426,6 +426,7 @@
                 const edgeDistanceRange = Math.max(1, maxTextEdgeDistance - minTextEdgeDistance);
                 const centerX = textCanvas.width * 0.5;
                 const centerY = textCanvas.height * 0.5;
+                const lineSplitY = titleSize * 1.08;
                 for (let y = 0; y < textCanvas.height; y += sampleStep) {
                     for (let x = 0; x < textCanvas.width; x += sampleStep) {
                         const index = y * textCanvas.width + x;
@@ -438,6 +439,7 @@
                             x,
                             y,
                             alpha,
+                            line: y < lineSplitY ? 'title' : 'subtitle',
                             reveal: borderDepth * 0.88 + sweep * 0.09 + seed * 0.025,
                         });
                     }
@@ -449,7 +451,7 @@
                 const points = [];
                 if (!candidates.length) {
                     for (let i = 0; i < safeCount; i++) {
-                        points.push({ x: width * 0.5, y: height * 0.5, depth: 0.5, rim: 0.3, seed: hashUnit(i + 1) });
+                        points.push({ x: width * 0.5, y: height * 0.5, depth: 0.5, rim: 0.3, line: 'title', seed: hashUnit(i + 1) });
                     }
                 } else {
                     const step = candidates.length / safeCount;
@@ -464,6 +466,7 @@
                             y: originY + candidate.y + (hashUnit(seed * 91.7 + i) - 0.5) * jitter,
                             depth: clamp01(0.46 + (1 - Math.abs(nx)) * 0.22 - Math.abs(ny) * 0.08 + (seed - 0.5) * 0.18),
                             rim: clamp01(0.2 + Math.abs(nx) * 0.28 + (1 - Math.abs(ny)) * 0.12 + seed * 0.16),
+                            line: candidate.line,
                             reveal: candidate.reveal,
                             seed,
                         });
@@ -504,6 +507,27 @@
                 return a + (b - a) * t;
             }
 
+            function getBootLedColor(targetIndex) {
+                const channel = targetIndex % 6;
+                if (channel === 1) return [255, 80, 70];
+                if (channel === 3) return [80, 255, 130];
+                if (channel === 5) return [80, 130, 255];
+                return [235, 245, 255];
+            }
+
+            function getBootParticleColor(textPoint, targetIndex, ledFly) {
+                const ledColor = getBootLedColor(targetIndex);
+                const textColor = textPoint && textPoint.line === 'subtitle'
+                    ? ledColor
+                    : [238, 246, 255];
+                const colorFly = smoothstep(0.1, 0.82, ledFly);
+                return [
+                    Math.round(lerp(textColor[0], ledColor[0], colorFly)),
+                    Math.round(lerp(textColor[1], ledColor[1], colorFly)),
+                    Math.round(lerp(textColor[2], ledColor[2], colorFly)),
+                ].join(',');
+            }
+
             function setBootBuildProgress(progress) {
                 bootTargetProgress = Math.max(bootTargetProgress, clamp01(progress));
                 if (bootTargetProgress > 0.01) canvas.classList.add('boot-settling');
@@ -528,38 +552,6 @@
             window.__isBootPreviewActive = function () {
                 return running && canvas.style.display !== 'none';
             };
-
-            function rotateBootShellDirection(nx, ny, nz, elapsed) {
-                const spin = elapsed * 0.46 + 0.85;
-                const tilt = -0.28 + Math.sin(elapsed * 0.35) * 0.05;
-                const cosY = Math.cos(spin);
-                const sinY = Math.sin(spin);
-                const cosX = Math.cos(tilt);
-                const sinX = Math.sin(tilt);
-                const x1 = nx * cosY - nz * sinY;
-                const z1 = nx * sinY + nz * cosY;
-                const y1 = ny;
-                const y2 = y1 * cosX - z1 * sinX;
-                const z2 = y1 * sinX + z1 * cosX;
-                return [x1, y2, z2];
-            }
-
-            function getFlightPosition(target, index, elapsed) {
-                const baseLength = Math.hypot(target[0], target[1], target[2]) || 1;
-                const shellRadius = Math.max(1.58, baseLength * 1.14);
-                const [x2, y2, z2] = rotateBootShellDirection(
-                    target[0] / baseLength,
-                    target[1] / baseLength,
-                    target[2] / baseLength,
-                    elapsed
-                );
-                const breathe = 1 + Math.sin(elapsed * 1.35 + index * 0.17) * 0.018;
-                return [
-                    x2 * shellRadius * breathe,
-                    y2 * shellRadius * breathe,
-                    z2 * shellRadius * breathe,
-                ];
-            }
 
             function getBootVisualDepth(point) {
                 const rawDepth = clamp01((point[2] + 1.8) / 3.6);
@@ -652,47 +644,35 @@
                     const boardProgress = currentBoardProgress
                         + (targetBoardProgress - currentBoardProgress) * Math.min(1, frameDelta * 6.5);
                     boardDisplayProgress[sourceIndex] = boardProgress;
-                    const flight = getFlightPosition(target, sourceIndex, elapsed);
                     const localDelay = i / Math.max(1, particleCount) * 0.14;
-                    const textMorph = smoothstep(0.12 + localDelay, 1.24 + localDelay, elapsed);
                     const ledFly = finishRequested ? smoothstep(0.02 + localDelay * 0.65, 0.96 + localDelay * 0.65, finishElapsed) : 0;
                     const localReveal = smoothstep(0.0, 0.18, elapsed - i / particleRevealRate);
                     const textPoint = textPoints[particleIndex] || textPoints[i % Math.max(1, textPoints.length)];
-                    const projected = projectBootPoint(flight);
                     const targetProjected = projectBootPoint(target);
                     const textDrift = (1 - ledFly) * (0.35 + (textPoint ? textPoint.depth : 0.5) * 0.85);
                     const textX = (textPoint ? textPoint.x : width * 0.5)
                         + Math.sin(elapsed * 1.2 + sourceIndex * 0.19) * textDrift;
                     const textY = (textPoint ? textPoint.y : height * 0.5)
                         + Math.cos(elapsed * 1.05 + sourceIndex * 0.23) * textDrift * 0.45;
-                    const titleX = lerp(projected.x, textX, textMorph);
-                    const titleY = lerp(projected.y, textY, textMorph);
-                    const x = lerp(titleX, targetProjected.x, ledFly);
-                    const y = lerp(titleY, targetProjected.y, ledFly);
-                    const flightDepth = getBootVisualDepth(flight);
+                    const x = lerp(textX, targetProjected.x, ledFly);
+                    const y = lerp(textY, targetProjected.y, ledFly);
                     const targetDepth = getBootVisualDepth(target);
                     const textDepth = clamp01((textPoint ? textPoint.depth : 0.5) + Math.sin(elapsed * 1.25 + particleIndex * 0.17) * 0.035);
-                    const visualDepth = lerp(lerp(flightDepth, textDepth, textMorph), targetDepth, ledFly);
-                    const rim = lerp(lerp(getBootRimFactor(flight), textPoint ? textPoint.rim : 0.3, textMorph), getBootRimFactor(target), ledFly);
+                    const visualDepth = lerp(textDepth, targetDepth, ledFly);
+                    const rim = lerp(textPoint ? textPoint.rim : 0.3, getBootRimFactor(target), ledFly);
                     const seed = Math.sin(particleIndex * 12.9898) * 43758.5453;
                     const sizeJitter = 0.86 + (seed - Math.floor(seed)) * 0.42;
                     const alivePulse = 1 + Math.sin(elapsed * 2.2 + particleIndex * 0.13) * (finishRequested ? 0.015 : 0.075);
                     const depthSize = visualDepth * visualDepth;
                     const perspectiveSize = 0.55 + depthSize * 3.25 + rim * 0.45;
-                    const textHold = textMorph * (1 - ledFly);
+                    const textHold = 1 - ledFly;
                     const baseRadius = perspectiveSize * (0.52 + localReveal * 0.48) * alivePulse * sizeJitter;
                     const textRadius = 1.05 + textDepth * 0.64;
                     const radius = lerp(baseRadius, textRadius, textHold * 0.86);
                     const boardFade = 1 - smoothstep(0.84, 1, ledFly);
                     const baseAlpha = (0.045 + depthSize * 0.62 + rim * 0.08) * localReveal * Math.max(0.1, boardFade);
                     const alpha = Math.min(0.98, baseAlpha * (1 + textHold * 0.45) + textHold * localReveal * 0.48);
-                    const channel = particleIndex % 6;
-                    const titleWhite = textHold > 0.5;
-                    const color = titleWhite ? '238,246,255'
-                        : channel === 1 ? '255,80,70'
-                            : channel === 3 ? '80,255,130'
-                                : channel === 5 ? '80,130,255'
-                                    : '235,245,255';
+                    const color = getBootParticleColor(textPoint, sourceIndex, ledFly);
                     drawItems.push({
                         x,
                         y,
