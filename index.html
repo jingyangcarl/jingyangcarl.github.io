@@ -279,12 +279,7 @@
                 return running && canvas.style.display !== 'none';
             };
 
-            function getFlightPosition(target, index, elapsed) {
-                const baseLength = Math.hypot(target[0], target[1], target[2]) || 1;
-                const shellRadius = Math.max(1.58, baseLength * 1.14);
-                const nx = target[0] / baseLength;
-                const ny = target[1] / baseLength;
-                const nz = target[2] / baseLength;
+            function rotateBootShellDirection(nx, ny, nz, elapsed) {
                 const spin = elapsed * 0.46 + 0.85;
                 const tilt = -0.28 + Math.sin(elapsed * 0.35) * 0.05;
                 const cosY = Math.cos(spin);
@@ -296,12 +291,84 @@
                 const y1 = ny;
                 const y2 = y1 * cosX - z1 * sinX;
                 const z2 = y1 * sinX + z1 * cosX;
+                return [x1, y2, z2];
+            }
+
+            function getFlightPosition(target, index, elapsed) {
+                const baseLength = Math.hypot(target[0], target[1], target[2]) || 1;
+                const shellRadius = Math.max(1.58, baseLength * 1.14);
+                const [x2, y2, z2] = rotateBootShellDirection(
+                    target[0] / baseLength,
+                    target[1] / baseLength,
+                    target[2] / baseLength,
+                    elapsed
+                );
                 const breathe = 1 + Math.sin(elapsed * 1.35 + index * 0.17) * 0.018;
                 return [
-                    x1 * shellRadius * breathe,
+                    x2 * shellRadius * breathe,
                     y2 * shellRadius * breathe,
                     z2 * shellRadius * breathe,
                 ];
+            }
+
+            function getBootVisualDepth(point) {
+                const rawDepth = clamp01((point[2] + 1.8) / 3.6);
+                return smoothstep(0.08, 0.98, rawDepth);
+            }
+
+            function getBootRimFactor(point) {
+                const length = Math.hypot(point[0], point[1], point[2]) || 1;
+                const sideOn = 1 - Math.abs(point[2]) / length;
+                return smoothstep(0.58, 0.98, sideOn);
+            }
+
+            function drawBootGuideRing(plane, elapsed, alpha) {
+                const segments = 96;
+                const shellRadius = 1.72;
+                let prev = null;
+                for (let i = 0; i <= segments; i++) {
+                    const angle = (i / segments) * Math.PI * 2;
+                    const ca = Math.cos(angle);
+                    const sa = Math.sin(angle);
+                    let dir;
+                    if (plane === 'xy') dir = rotateBootShellDirection(ca, sa, 0, elapsed);
+                    else if (plane === 'yz') dir = rotateBootShellDirection(0, ca, sa, elapsed);
+                    else dir = rotateBootShellDirection(ca, 0, sa, elapsed);
+                    const point = [
+                        dir[0] * shellRadius,
+                        dir[1] * shellRadius,
+                        dir[2] * shellRadius,
+                    ];
+                    const projected = projectBootPoint(point);
+                    const visualDepth = getBootVisualDepth(point);
+                    const current = {
+                        x: projected.x,
+                        y: projected.y,
+                        depth: visualDepth,
+                    };
+                    if (prev) {
+                        const segDepth = (prev.depth + current.depth) * 0.5;
+                        const segAlpha = alpha * (0.18 + segDepth * 0.82);
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(150,210,255,${segAlpha * 0.82})`;
+                        ctx.lineWidth = 0.35 + segDepth * 1.15;
+                        ctx.moveTo(prev.x, prev.y);
+                        ctx.lineTo(current.x, current.y);
+                        ctx.stroke();
+                    }
+                    prev = current;
+                }
+            }
+
+            function drawBootGuideRims(elapsed, progress) {
+                const guideAlpha = Math.max(0, 0.22 * (1 - smoothstep(0.55, 1, progress)));
+                if (guideAlpha <= 0.01) return;
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                drawBootGuideRing('xy', elapsed, guideAlpha * 0.85);
+                drawBootGuideRing('xz', elapsed + 0.7, guideAlpha * 0.55);
+                drawBootGuideRing('yz', elapsed + 1.4, guideAlpha * 0.42);
+                ctx.restore();
             }
 
             function projectBootPoint(point) {
@@ -352,9 +419,8 @@
                 );
 
                 ctx.clearRect(0, 0, width, height);
-                ctx.save();
-                ctx.globalCompositeOperation = 'lighter';
-
+                drawBootGuideRims(elapsed, bootDisplayProgress);
+                const drawItems = [];
                 for (let i = 0; i < revealCount; i++) {
                     const sourceIndex = order[i];
                     const target = positions[sourceIndex];
@@ -382,35 +448,59 @@
                     );
                     const x = lerp(projected.x, targetProjected.x, screenSettle);
                     const y = lerp(projected.y, targetProjected.y, screenSettle);
-                    const depth = Math.max(0.25, projected.depth);
+                    const visualDepth = getBootVisualDepth(point);
+                    const rim = getBootRimFactor(point);
+                    const seed = Math.sin(sourceIndex * 12.9898) * 43758.5453;
+                    const sizeJitter = 0.86 + (seed - Math.floor(seed)) * 0.42;
                     const alivePulse = 1 + Math.sin(elapsed * 2.2 + sourceIndex * 0.13) * (finishRequested ? 0.015 : 0.075);
-                    const radius = (1.6 + depth * 3.0) * (0.55 + localReveal * 0.45) * alivePulse;
+                    const depthSize = visualDepth * visualDepth;
+                    const perspectiveSize = 0.55 + depthSize * 5.4 + rim * 0.9;
+                    const radius = perspectiveSize * (0.52 + localReveal * 0.48) * alivePulse * sizeJitter;
                     const boardFade = 1 - smoothstep(0.78, 1, boardProgress);
-                    const alpha = Math.min(0.9, (0.16 + depth * 0.58) * localReveal * Math.max(0.12, boardFade));
+                    const alpha = Math.min(0.95, (0.045 + depthSize * 0.72 + rim * 0.14) * localReveal * Math.max(0.1, boardFade));
                     const channel = sourceIndex % 6;
                     const color = channel === 1 ? '255,80,70'
                         : channel === 3 ? '80,255,130'
                         : channel === 5 ? '80,130,255'
                         : '235,245,255';
+                    drawItems.push({
+                        x,
+                        y,
+                        radius,
+                        alpha,
+                        color,
+                        rim,
+                        morph,
+                        visualDepth,
+                        sourceIndex,
+                        elapsed,
+                    });
+                }
 
+                drawItems.sort((a, b) => a.visualDepth - b.visualDepth);
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                drawItems.forEach((item) => {
                     ctx.beginPath();
-                    ctx.fillStyle = `rgba(${color},${alpha * 0.16})`;
-                    ctx.arc(x, y, radius * 3.4, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${item.color},${item.alpha * (0.06 + item.rim * 0.14)})`;
+                    ctx.arc(item.x, item.y, item.radius * (2.35 + item.rim * 1.65), 0, Math.PI * 2);
                     ctx.fill();
 
-                    if (morph > 0.86) {
+                    if (item.rim > 0.2 || item.morph > 0.82) {
+                        const arcStart = item.elapsed * 0.65 + item.sourceIndex * 0.37;
+                        const arcLength = Math.PI * (0.42 + item.rim * 0.78);
                         ctx.beginPath();
-                        ctx.strokeStyle = `rgba(${color},${0.08 * morph})`;
-                        ctx.lineWidth = 1;
-                        ctx.arc(x, y, radius * 2.0, 0, Math.PI * 2);
+                        ctx.strokeStyle = `rgba(${item.color},${item.alpha * (0.12 + item.rim * 0.22)})`;
+                        ctx.lineWidth = 0.7 + item.visualDepth * 1.1;
+                        ctx.arc(item.x, item.y, item.radius * (1.65 + item.rim * 1.35), arcStart, arcStart + arcLength);
                         ctx.stroke();
                     }
 
                     ctx.beginPath();
-                    ctx.fillStyle = `rgba(${color},${alpha})`;
-                    ctx.arc(x, y, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${item.color},${item.alpha})`;
+                    ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
                     ctx.fill();
-                }
+                });
 
                 ctx.restore();
                 requestAnimationFrame(drawBootPreview);
