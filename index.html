@@ -59,7 +59,7 @@
             width: 100vw;
             height: 100vh;
             pointer-events: none;
-            z-index: 5;
+            z-index: 10000;
             opacity: 1;
             transition: opacity 0.45s ease;
             will-change: opacity;
@@ -489,9 +489,11 @@
                 const textPoints = getBootTextPoints(particleCount);
 
                 ctx.clearRect(0, 0, width, height);
-                const titleVeil = smoothstep(0.45, 1.15, elapsed) * (1 - finishFlyProgress) * 0.34;
-                if (titleVeil > 0.005) {
-                    ctx.fillStyle = `rgba(0,0,0,${titleVeil})`;
+                const stageCoverAlpha = finishRequested
+                    ? 1 - smoothstep(0.52, 0.98, finishFlyProgress)
+                    : 1;
+                if (stageCoverAlpha > 0.005) {
+                    ctx.fillStyle = `rgba(0,0,0,${stageCoverAlpha})`;
                     ctx.fillRect(0, 0, width, height);
                 }
                 drawBootTitleGlow(smoothstep(0.65, 1.25, elapsed) * (1 - finishFlyProgress) * 0.72);
