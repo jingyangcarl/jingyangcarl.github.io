@@ -131,7 +131,7 @@
             const canvas = document.getElementById('bootPreviewCanvas');
             if (!canvas) return;
 
-            const ctx = canvas.getContext('2d', { alpha: true });
+            const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
             if (!ctx) return;
 
             let width = 0;
@@ -199,7 +199,7 @@
             })();
 
             function resizeBootPreview() {
-                dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+                dpr = 1;
                 width = window.innerWidth || 1;
                 height = window.innerHeight || 1;
                 canvas.width = Math.floor(width * dpr);
@@ -315,6 +315,17 @@
                 const liveLedTargets = window.__BOOT_LIGHTSTAGE_LED_TARGETS__;
                 if (Array.isArray(liveLedTargets) && liveLedTargets.length) return liveLedTargets;
                 return getApproxBootLedPositions(getBootBoardPositions());
+            }
+
+            function getBootPreviewParticleCount(targetCount) {
+                const sizeBudget = Math.min(width || 1, height || 1) < 680 ? 900 : 1650;
+                const areaBudget = Math.floor(Math.sqrt(Math.max(1, (width || 1) * (height || 1))) * 1.55);
+                return Math.max(360, Math.min(targetCount, sizeBudget, areaBudget));
+            }
+
+            function getBootTargetIndex(particleIndex, particleCount, targetCount) {
+                if (targetCount <= particleCount) return particleIndex % Math.max(1, targetCount);
+                return Math.min(targetCount - 1, Math.floor((particleIndex + 0.5) * targetCount / particleCount));
             }
 
             function hashUnit(value) {
@@ -588,7 +599,10 @@
                 if (!running) return;
 
                 const positions = getBootPositions();
-                const particleCount = Math.max(positions.length, Math.min(5200, positions.length * 21));
+                const targetCount = positions.length;
+                const particleCount = getBootPreviewParticleCount(targetCount);
+                window.__BOOT_PREVIEW_PARTICLE_COUNT__ = particleCount;
+                window.__BOOT_PREVIEW_TARGET_COUNT__ = targetCount;
                 const elapsed = Math.max(0.42, (now - startTime) / 1000);
                 const frameDelta = Math.min(0.25, Math.max(0, (now - lastFrameTime) / 1000));
                 lastFrameTime = now;
@@ -631,7 +645,7 @@
                 const particleRevealRate = Math.max(900, particleCount / 2.1);
                 for (let i = 0; i < revealCount; i++) {
                     const particleIndex = order[i];
-                    const sourceIndex = particleIndex % positions.length;
+                    const sourceIndex = getBootTargetIndex(particleIndex, particleCount, targetCount);
                     const target = positions[sourceIndex];
                     const targetBoardProgress = boardTargetProgress[sourceIndex] || 0;
                     const currentBoardProgress = boardDisplayProgress[sourceIndex] || 0;
@@ -667,7 +681,7 @@
                     const perspectiveSize = 0.55 + depthSize * 3.25 + rim * 0.45;
                     const textHold = textMorph * (1 - ledFly);
                     const baseRadius = perspectiveSize * (0.52 + localReveal * 0.48) * alivePulse * sizeJitter;
-                    const textRadius = 0.78 + textDepth * 0.48;
+                    const textRadius = 1.05 + textDepth * 0.64;
                     const radius = lerp(baseRadius, textRadius, textHold * 0.86);
                     const boardFade = 1 - smoothstep(0.84, 1, ledFly);
                     const baseAlpha = (0.045 + depthSize * 0.62 + rim * 0.08) * localReveal * Math.max(0.1, boardFade);
@@ -700,7 +714,7 @@
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
                 drawItems.forEach((item) => {
-                    if (!finishRequested && item.textHold < 0.82) {
+                    if (!finishRequested && item.textHold < 0.82 && item.sourceIndex % 3 === 0) {
                         ctx.beginPath();
                         const haloAlpha = item.alpha * lerp(0.035 + item.rim * 0.075, 0.012, item.textHold);
                         const haloRadius = item.radius * lerp(1.8 + item.rim * 0.7, 1.15, item.textHold);
@@ -709,7 +723,7 @@
                         ctx.fill();
                     }
 
-                    if (!finishRequested && item.textHold < 0.35 && item.visualDepth > 0.32 && (item.rim > 0.55 || item.morph > 0.9)) {
+                    if (!finishRequested && item.sourceIndex % 8 === 0 && item.textHold < 0.35 && item.visualDepth > 0.32 && (item.rim > 0.55 || item.morph > 0.9)) {
                         const arcStart = item.elapsed * 0.65 + item.sourceIndex * 0.37;
                         const arcLength = Math.PI * (0.28 + item.rim * 0.42);
                         ctx.beginPath();
