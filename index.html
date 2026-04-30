@@ -44,6 +44,27 @@
             background-color: rgba(44, 44, 44, 0.5);
             z-index: 998 !important; /* TODO Solve this in HTML */
         }
+
+        .info-mobile-title {
+            display: none;
+        }
+
+        @media (max-width: 700px), (max-aspect-ratio: 4/5) {
+            #info {
+                padding: 6px 8px;
+                line-height: 18px;
+            }
+
+            #info .info-desktop-title,
+            #info .info-break,
+            #info .info-details {
+                display: none;
+            }
+
+            #info .info-mobile-title {
+                display: inline;
+            }
+        }
         
         a, button, input, select {
             pointer-events: auto;
@@ -122,8 +143,8 @@
 </head>
 <body>
     <div id="info">
-        <b>The Algorithmic Aura (CVPR 2026 Art)</b><br/>
-        <small><a href="https://jingyangcarl.com" target="_blank" rel="noopener">Jing Yang</a>'s Ph.D. with <a href="https://vgl.ict.usc.edu/LightStages/" target="_blank" rel="noopener">Light Stage</a> &nbsp;|&nbsp; Tweak this <a href="https://jingyangcarl.github.io" target="_blank" rel="noopener">virtual Light Stage</a> via <i style="color: lightgreen">Controls</i> →</small>
+        <b><span class="info-desktop-title">The Algorithmic Aura (CVPR 2026 Art)</span><span class="info-mobile-title">CVPR 2026 Art</span></b><br class="info-break"/>
+        <small class="info-details"><a href="https://jingyangcarl.com" target="_blank" rel="noopener">Jing Yang</a>'s Ph.D. with <a href="https://vgl.ict.usc.edu/LightStages/" target="_blank" rel="noopener">Light Stage</a> &nbsp;|&nbsp; Tweak this <a href="https://jingyangcarl.github.io" target="_blank" rel="noopener">virtual Light Stage</a> via <i style="color: lightgreen">Controls</i> →</small>
     </div>
     <canvas id="bootPreviewCanvas" aria-hidden="true"></canvas>
     <script>
@@ -1538,11 +1559,14 @@
             gui.add( args.controls, 'fullscreen').name('Fullscreen').listen();
             gui.add( args.projects, 'papercopilot').name('I also build Paper Copilot').listen();
             document.body.appendChild(gui.domElement);
+            applyResponsiveOverlayState();
         }
 
         function setupStats() {
             stats = new Stats();
+            stats.dom.id = 'statsPanel';
             document.body.appendChild(stats.dom);
+            applyResponsiveOverlayState();
         }
 
         function applyProjectsAccessCode(code) {
@@ -4435,6 +4459,24 @@
             return typeof window.__isBootPreviewActive === 'function' && window.__isBootPreviewActive();
         }
 
+        function isCompactMobileLayout() {
+            const width = window.innerWidth || 1;
+            const height = window.innerHeight || 1;
+            return width <= 700 || (width / height) <= 0.8;
+        }
+
+        function applyResponsiveOverlayState() {
+            const compactMobileLayout = isCompactMobileLayout();
+            document.body.classList.toggle('compact-mobile-layout', compactMobileLayout);
+            if (stats && stats.dom) {
+                stats.dom.style.display = compactMobileLayout ? 'none' : 'block';
+            }
+            if (gui && gui.domElement) {
+                gui.domElement.style.display = compactMobileLayout ? 'none' : '';
+            }
+            return compactMobileLayout;
+        }
+
         function updateOrbitAutoRotateState() {
             if (!controls) return;
             controls.autoRotate = !!(args.controls.autoRotate && !isBootPreviewActive());
@@ -4450,13 +4492,15 @@
 
         // Animation loop
         function animate() {
-            render();
-            stats.update();
+            const compactMobileLayout = applyResponsiveOverlayState();
+            render(compactMobileLayout);
+            if (!compactMobileLayout && stats) stats.update();
             updateOrbitAutoRotateState();
             controls.update();
         }
 
-        function render() {
+        function render(compactMobileLayout) {
+            if (compactMobileLayout === undefined) compactMobileLayout = isCompactMobileLayout();
 
             // main scene
             requestAnimationFrame(animate);
@@ -4505,7 +4549,8 @@
 
             // inset scene
             // debugger;
-            if (args.render.sideRender.show) {
+            const showCameraInset = args.render.sideRender.show && !compactMobileLayout;
+            if (showCameraInset) {
                 if (cameraInsetLabel) cameraInsetLabel.style.display = 'block';
                 renderer.setClearColor( 0x000000, 2 );
                 renderer.clearDepth(); // important!
@@ -4517,6 +4562,7 @@
                 renderer.setScissorTest( false );
             } else if (cameraInsetLabel) {
                 cameraInsetLabel.style.display = 'none';
+                if (insetLockIcon) insetLockIcon.style.display = 'none';
             }
 
             // illumination preview inside the inset (lower-left corner)
@@ -4568,6 +4614,7 @@
                     || args.lightstage.patterns.active === 'warmup'
                     || args.lightstage.patterns.active === 'brdf'
                     || args.lightstage.patterns.active === 'off';
+                const showAuxiliaryLeftPreviews = !compactMobileLayout;
                 const equirectTop = Math.max(0, window.innerHeight - (equirectY + clampedHeight));
                 const equirectTop2 = Math.max(0, window.innerHeight - (equirectY2 + clampedHeight));
                 const miniTop = Math.max(0, window.innerHeight - (miniY + clampedHeight));
@@ -4649,7 +4696,7 @@
 
                 // layout preview (wireframe) next to equirect preview on the left
                 if (layoutPreviewCanvas && (layoutPreviewRenderer || renderSidePreviewsWithMainRenderer) && layoutPreviewScene && layoutPreviewCamera) {
-                    if (showPatternPreview) {
+                    if (showPatternPreview && showAuxiliaryLeftPreviews) {
                         const layoutSize = Math.max(60, Math.floor(clampedHeight * 0.75));
                         const layoutGap = 8;
                         const layoutX = Math.max(20, equirectX - layoutSize - layoutGap);
@@ -4712,7 +4759,7 @@
 
                 // mesh wireframe preview (left of Light sources equirect)
                 if (meshPreviewCanvas && (meshPreviewRenderer || renderSidePreviewsWithMainRenderer) && meshPreviewScene && meshPreviewCamera) {
-                    if (showPatternPreview && meshPreviewRig) {
+                    if (showPatternPreview && showAuxiliaryLeftPreviews && meshPreviewRig) {
                         const meshSize = Math.max(60, Math.floor(clampedHeight * 0.75));
                         const meshGap = 8;
                         const meshX = Math.max(20, equirectX2 - meshSize - meshGap);
@@ -4888,14 +4935,15 @@
 
         function updateCameraInsetLabel() {
             if (!cameraInsetLabel) return;
+            const showCameraInset = args.render.sideRender.show && !isCompactMobileLayout();
             const insetH = (typeof insetHeight === 'number') ? insetHeight : 0;
             const bottom = 20 + insetH + 6;
             cameraInsetLabel.style.bottom = `${bottom}px`;
-            cameraInsetLabel.style.display = args.render.sideRender.show ? 'block' : 'none';
+            cameraInsetLabel.style.display = showCameraInset ? 'block' : 'none';
             if (insetLockIcon) {
                 const top = window.innerHeight - 20 - insetH + 5;
                 insetLockIcon.style.top = `${top}px`;
-                insetLockIcon.style.display = args.render.sideRender.show ? 'block' : 'none';
+                insetLockIcon.style.display = showCameraInset ? 'block' : 'none';
             }
         }
 
@@ -4903,7 +4951,7 @@
             if (!labelRenderer || !labelRenderer.domElement) return;
             if (!labelMaskSvg || !labelMaskFullRect || !labelMaskInsetRect) return;
 
-            if (!args.render.sideRender.show) {
+            if (!args.render.sideRender.show || isCompactMobileLayout()) {
                 labelRenderer.domElement.style.mask = 'none';
                 labelRenderer.domElement.style.webkitMask = 'none';
                 labelRenderer.domElement.style.maskImage = 'none';
@@ -5504,6 +5552,7 @@
             }
             cameraObject.updateProjectionMatrix();
 
+            applyResponsiveOverlayState();
             updateCameraInsetLabel();
             updateLabelMask();
         }
@@ -6244,7 +6293,7 @@
             const insetW = (typeof insetWidth === 'number' && insetWidth > 0) ? insetWidth : 0;
             const insetH = (typeof insetHeight === 'number' && insetHeight > 0) ? insetHeight : 0;
             
-            if (insetW > 0 && insetH > 0 && args.render.sideRender.show) {
+            if (insetW > 0 && insetH > 0 && args.render.sideRender.show && !isCompactMobileLayout()) {
                 const clickX = ev.clientX - rect.left;
                 const clickY = ev.clientY - rect.top;
                 const insetX = 20;
