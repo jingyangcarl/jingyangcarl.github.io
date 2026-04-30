@@ -147,10 +147,10 @@
             let bootDisplayProgress = 0;
             let boardTargetProgress = [];
             let boardDisplayProgress = [];
-            let cachedOrderLength = 0;
-            let cachedOrder = [];
             let cachedTextKey = '';
             let cachedTextPoints = [];
+            let cachedTextRevealKey = '';
+            let cachedTextRevealOrder = [];
             let cachedApproxLedKey = '';
             let cachedApproxLedPositions = [];
             const minBootPreviewMs = 2600;
@@ -317,24 +317,6 @@
                 return getApproxBootLedPositions(getBootBoardPositions());
             }
 
-            function getProgressiveOrder(count) {
-                if (cachedOrderLength === count && cachedOrder.length) return cachedOrder;
-                const order = [];
-                const seen = new Uint8Array(count);
-                let stride = 1;
-                while (stride < count) stride *= 2;
-                for (; stride >= 1; stride = Math.floor(stride / 2)) {
-                    for (let i = 0; i < count; i += stride) {
-                        if (seen[i]) continue;
-                        seen[i] = 1;
-                        order.push(i);
-                    }
-                }
-                cachedOrderLength = count;
-                cachedOrder = order;
-                return order;
-            }
-
             function hashUnit(value) {
                 const hashed = Math.sin(value) * 43758.5453;
                 return hashed - Math.floor(hashed);
@@ -389,12 +371,67 @@
                 const sampleStep = 1;
                 const imageData = textCtx.getImageData(0, 0, textCanvas.width, textCanvas.height).data;
                 const candidates = [];
-                for (let y = 0; y < textCanvas.height; y += sampleStep) {
-                    for (let x = 0; x < textCanvas.width; x += sampleStep) {
-                        const alpha = imageData[((y * textCanvas.width + x) * 4) + 3];
-                        if (alpha > 28) candidates.push({ x, y, alpha });
+                const textPixelCount = textCanvas.width * textCanvas.height;
+                const textMask = new Uint8Array(textPixelCount);
+                const edgeDistance = new Uint16Array(textPixelCount);
+                const maxDistance = 32767;
+                for (let index = 0; index < textPixelCount; index++) {
+                    if (imageData[index * 4 + 3] > 28) {
+                        textMask[index] = 1;
+                        edgeDistance[index] = maxDistance;
                     }
                 }
+                for (let y = 0; y < textCanvas.height; y++) {
+                    for (let x = 0; x < textCanvas.width; x++) {
+                        const index = y * textCanvas.width + x;
+                        if (!textMask[index]) continue;
+                        let best = edgeDistance[index];
+                        if (x > 0) best = Math.min(best, edgeDistance[index - 1] + 3);
+                        if (y > 0) best = Math.min(best, edgeDistance[index - textCanvas.width] + 3);
+                        if (x > 0 && y > 0) best = Math.min(best, edgeDistance[index - textCanvas.width - 1] + 4);
+                        if (x + 1 < textCanvas.width && y > 0) best = Math.min(best, edgeDistance[index - textCanvas.width + 1] + 4);
+                        edgeDistance[index] = best;
+                    }
+                }
+                for (let y = textCanvas.height - 1; y >= 0; y--) {
+                    for (let x = textCanvas.width - 1; x >= 0; x--) {
+                        const index = y * textCanvas.width + x;
+                        if (!textMask[index]) continue;
+                        let best = edgeDistance[index];
+                        if (x + 1 < textCanvas.width) best = Math.min(best, edgeDistance[index + 1] + 3);
+                        if (y + 1 < textCanvas.height) best = Math.min(best, edgeDistance[index + textCanvas.width] + 3);
+                        if (x + 1 < textCanvas.width && y + 1 < textCanvas.height) best = Math.min(best, edgeDistance[index + textCanvas.width + 1] + 4);
+                        if (x > 0 && y + 1 < textCanvas.height) best = Math.min(best, edgeDistance[index + textCanvas.width - 1] + 4);
+                        edgeDistance[index] = best;
+                    }
+                }
+                let minTextEdgeDistance = maxDistance;
+                let maxTextEdgeDistance = 0;
+                for (let index = 0; index < textPixelCount; index++) {
+                    if (!textMask[index]) continue;
+                    minTextEdgeDistance = Math.min(minTextEdgeDistance, edgeDistance[index]);
+                    maxTextEdgeDistance = Math.max(maxTextEdgeDistance, edgeDistance[index]);
+                }
+                const edgeDistanceRange = Math.max(1, maxTextEdgeDistance - minTextEdgeDistance);
+                const centerX = textCanvas.width * 0.5;
+                const centerY = textCanvas.height * 0.5;
+                for (let y = 0; y < textCanvas.height; y += sampleStep) {
+                    for (let x = 0; x < textCanvas.width; x += sampleStep) {
+                        const index = y * textCanvas.width + x;
+                        if (!textMask[index]) continue;
+                        const alpha = imageData[index * 4 + 3];
+                        const borderDepth = clamp01((edgeDistance[index] - minTextEdgeDistance) / edgeDistanceRange);
+                        const sweep = (Math.atan2(y - centerY, x - centerX) + Math.PI) / (Math.PI * 2);
+                        const seed = hashUnit((x + 19) * 12.9898 + (y + 31) * 78.233);
+                        candidates.push({
+                            x,
+                            y,
+                            alpha,
+                            reveal: borderDepth * 0.88 + sweep * 0.09 + seed * 0.025,
+                        });
+                    }
+                }
+                candidates.sort((a, b) => a.reveal - b.reveal || a.y - b.y || a.x - b.x);
 
                 const originX = width * 0.5 - textCanvas.width * 0.5;
                 const originY = height * 0.43 - textCanvas.height * 0.5;
@@ -416,6 +453,7 @@
                             y: originY + candidate.y + (hashUnit(seed * 91.7 + i) - 0.5) * jitter,
                             depth: clamp01(0.46 + (1 - Math.abs(nx)) * 0.22 - Math.abs(ny) * 0.08 + (seed - 0.5) * 0.18),
                             rim: clamp01(0.2 + Math.abs(nx) * 0.28 + (1 - Math.abs(ny)) * 0.12 + seed * 0.16),
+                            reveal: candidate.reveal,
                             seed,
                         });
                     }
@@ -424,6 +462,22 @@
                 cachedTextKey = key;
                 cachedTextPoints = points;
                 return points;
+            }
+
+            function getTextRevealOrder(textPoints) {
+                const key = cachedTextKey;
+                if (cachedTextRevealKey === key && cachedTextRevealOrder.length === textPoints.length) {
+                    return cachedTextRevealOrder;
+                }
+                const order = textPoints.map((_, index) => index);
+                order.sort((a, b) => {
+                    const pa = textPoints[a];
+                    const pb = textPoints[b];
+                    return (pa.reveal || 0) - (pb.reveal || 0) || a - b;
+                });
+                cachedTextRevealKey = key;
+                cachedTextRevealOrder = order;
+                return order;
             }
 
             function clamp01(value) {
@@ -535,7 +589,6 @@
 
                 const positions = getBootPositions();
                 const particleCount = Math.max(positions.length, Math.min(5200, positions.length * 21));
-                const order = getProgressiveOrder(particleCount);
                 const elapsed = Math.max(0.42, (now - startTime) / 1000);
                 const frameDelta = Math.min(0.25, Math.max(0, (now - lastFrameTime) / 1000));
                 lastFrameTime = now;
@@ -557,12 +610,14 @@
                 if (finishRequested && finishFlyProgress > 0.985 && (now - startTime) >= minBootPreviewMs) {
                     startBootFade();
                 }
+                const titleRevealProgress = smoothstep(0.08, (minBootTitleHoldMs / 1000) - 0.45, elapsed);
                 const baseRevealCount = Math.min(
                     particleCount,
-                    Math.max(320, Math.floor(320 + elapsed * 2100))
+                    Math.floor(lerp(Math.min(360, particleCount), particleCount, titleRevealProgress))
                 );
-                const revealCount = finishRequested ? particleCount : baseRevealCount;
                 const textPoints = getBootTextPoints(particleCount);
+                const order = getTextRevealOrder(textPoints);
+                const revealCount = baseRevealCount;
 
                 ctx.clearRect(0, 0, width, height);
                 const stageCoverAlpha = finishRequested
@@ -584,7 +639,7 @@
                         + (targetBoardProgress - currentBoardProgress) * Math.min(1, frameDelta * 6.5);
                     boardDisplayProgress[sourceIndex] = boardProgress;
                     const flight = getFlightPosition(target, sourceIndex, elapsed);
-                    const localDelay = i / Math.max(1, revealCount) * 0.14;
+                    const localDelay = i / Math.max(1, particleCount) * 0.14;
                     const textMorph = smoothstep(0.12 + localDelay, 1.24 + localDelay, elapsed);
                     const ledFly = finishRequested ? smoothstep(0.02 + localDelay * 0.65, 0.96 + localDelay * 0.65, finishElapsed) : 0;
                     const localReveal = smoothstep(0.0, 0.18, elapsed - i / particleRevealRate);
