@@ -138,7 +138,12 @@
             let dpr = 1;
             let running = true;
             let startTime = performance.now();
+            let lastFrameTime = startTime;
             let finishRequested = false;
+            let finishRequestTime = 0;
+            let fadeStarted = false;
+            let bootTargetProgress = 0;
+            let bootDisplayProgress = 0;
             let cachedOrderLength = 0;
             let cachedOrder = [];
             const minBootPreviewMs = 2600;
@@ -233,6 +238,20 @@
                 return a + (b - a) * t;
             }
 
+            function setBootBuildProgress(progress) {
+                bootTargetProgress = Math.max(bootTargetProgress, clamp01(progress));
+            }
+
+            function startBootFade() {
+                if (fadeStarted || !running) return;
+                fadeStarted = true;
+                canvas.style.opacity = '0';
+                window.setTimeout(() => {
+                    running = false;
+                    canvas.style.display = 'none';
+                }, 520);
+            }
+
             function getFlightPosition(target, index, elapsed) {
                 const baseLength = Math.hypot(target[0], target[1], target[2]) || 1;
                 const shellRadius = Math.max(1.58, baseLength * 1.14);
@@ -276,6 +295,19 @@
                 const positions = getBootPositions();
                 const order = getProgressiveOrder(positions.length);
                 const elapsed = Math.max(0.42, (now - startTime) / 1000);
+                const frameDelta = Math.min(0.25, Math.max(0, (now - lastFrameTime) / 1000));
+                lastFrameTime = now;
+                const progressFollow = finishRequested ? 7.5 : 3.2;
+                bootDisplayProgress += (bootTargetProgress - bootDisplayProgress) * Math.min(1, frameDelta * progressFollow);
+                if (finishRequested && finishRequestTime) {
+                    bootDisplayProgress = Math.max(
+                        bootDisplayProgress,
+                        smoothstep(0, 0.9, (now - finishRequestTime) / 1000)
+                    );
+                }
+                if (finishRequested && bootDisplayProgress > 0.96 && (now - startTime) >= minBootPreviewMs) {
+                    startBootFade();
+                }
                 const revealCount = Math.min(
                     positions.length,
                     Math.max(56, Math.floor(64 + elapsed * 120))
@@ -289,8 +321,8 @@
                     const sourceIndex = order[i];
                     const target = positions[sourceIndex];
                     const flight = getFlightPosition(target, sourceIndex, elapsed);
-                    const localDelay = i * 0.0035;
-                    const morph = smoothstep(0.35 + localDelay, 2.05 + localDelay, elapsed);
+                    const localDelay = i / Math.max(1, revealCount) * 0.14;
+                    const morph = smoothstep(0.02 + localDelay, 0.94 + localDelay, bootDisplayProgress);
                     const localReveal = smoothstep(0.0, 0.18, elapsed - i / 120);
                     const point = [
                         lerp(flight[0], target[0], morph),
@@ -299,10 +331,12 @@
                     ];
                     const projected = projectBootPoint(point);
                     const targetProjected = projectBootPoint(target);
-                    const x = lerp(projected.x, targetProjected.x, smoothstep(1.65, 2.45, elapsed));
-                    const y = lerp(projected.y, targetProjected.y, smoothstep(1.65, 2.45, elapsed));
+                    const screenSettle = smoothstep(0.65, 1, bootDisplayProgress);
+                    const x = lerp(projected.x, targetProjected.x, screenSettle);
+                    const y = lerp(projected.y, targetProjected.y, screenSettle);
                     const depth = Math.max(0.25, projected.depth);
-                    const radius = (1.6 + depth * 3.0) * (0.55 + localReveal * 0.45);
+                    const alivePulse = 1 + Math.sin(elapsed * 2.2 + sourceIndex * 0.13) * (finishRequested ? 0.015 : 0.075);
+                    const radius = (1.6 + depth * 3.0) * (0.55 + localReveal * 0.45) * alivePulse;
                     const alpha = Math.min(0.9, (0.16 + depth * 0.58) * localReveal);
                     const channel = sourceIndex % 6;
                     const color = channel === 1 ? '255,80,70'
@@ -336,14 +370,14 @@
             window.__finishBootPreview = function () {
                 if (!running || finishRequested) return;
                 finishRequested = true;
-                const remaining = Math.max(0, minBootPreviewMs - (performance.now() - startTime));
-                window.setTimeout(() => {
-                    canvas.style.opacity = '0';
-                    window.setTimeout(() => {
-                        running = false;
-                        canvas.style.display = 'none';
-                    }, 520);
-                }, remaining);
+                finishRequestTime = performance.now();
+                setBootBuildProgress(1);
+            };
+
+            window.__setBootPreviewBuildProgress = function (completed, total) {
+                if (!running || finishRequested) return;
+                const denominator = Math.max(1, total || 1);
+                setBootBuildProgress(completed / denominator);
             };
 
             resizeBootPreview();
@@ -1647,6 +1681,9 @@
                 }
 
                 if (typeof window.__finishBootPreview === 'function') {
+                    if (typeof window.__setBootPreviewBuildProgress === 'function') {
+                        window.__setBootPreviewBuildProgress(positions.length, positions.length);
+                    }
                     window.__finishBootPreview();
                 }
             };
@@ -1659,6 +1696,9 @@
                 updateLayoutPreviewRig(geometry, stageShape);
                 let index = 0;
                 const buildOrder = getProgressiveBuildOrder(positions.length);
+                if (typeof window.__setBootPreviewBuildProgress === 'function') {
+                    window.__setBootPreviewBuildProgress(0, positions.length);
+                }
                 const buildChunk = (deadline) => {
                     if (buildToken !== lightStageBuildToken) {
                         if (nextLightboards.parent) nextLightboards.parent.remove(nextLightboards);
@@ -1673,6 +1713,10 @@
                         addLightboard(positions[sourceIndex], sourceIndex);
                         const hasIdleTime = deadline && typeof deadline.timeRemaining === 'function' && deadline.timeRemaining() > 3;
                         if (!hasIdleTime && performance.now() - start > 5) break;
+                    }
+
+                    if (typeof window.__setBootPreviewBuildProgress === 'function') {
+                        window.__setBootPreviewBuildProgress(index, positions.length);
                     }
 
                     if (index < buildOrder.length) {
