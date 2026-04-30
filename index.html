@@ -151,6 +151,8 @@
             let cachedOrder = [];
             let cachedTextKey = '';
             let cachedTextPoints = [];
+            let cachedApproxLedKey = '';
+            let cachedApproxLedPositions = [];
             const minBootPreviewMs = 2600;
             const minBootTitleHoldMs = 3200;
             const cacheReadyTimeoutMs = 3200;
@@ -205,12 +207,114 @@
                 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             }
 
-            function getBootPositions() {
+            const bootLedLocalOffsets = (() => {
+                const offsets = [];
+                const radiusBasis = 0.05;
+                const radiusScalarColorLED = 0.5;
+                const radiusScalarDaughter = 2.1;
+                const radiusScalarDautherOffsetX = 0.3;
+                const radiusScalarDautherOffsetY = 0.15;
+                const hexagonCornerVertices = [];
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2;
+                    hexagonCornerVertices.push({
+                        x: Math.cos(angle) * radiusBasis,
+                        y: Math.sin(angle) * radiusBasis,
+                    });
+                }
+                for (let i = 0; i < 6; i++) {
+                    const start = hexagonCornerVertices[i];
+                    const end = hexagonCornerVertices[(i + 1) % 6];
+                    for (let j = 1; j <= 2; j++) {
+                        const t = j / 2;
+                        offsets.push([
+                            start.x * (1 - t) + end.x * t,
+                            start.y * (1 - t) + end.y * t,
+                            0,
+                        ]);
+                    }
+                }
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2;
+                    offsets.push([
+                        Math.cos(angle) * radiusBasis * radiusScalarColorLED,
+                        Math.sin(angle) * radiusBasis * radiusScalarColorLED,
+                        0,
+                    ]);
+                }
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2;
+                    const x = Math.cos(angle) * radiusBasis * radiusScalarDaughter;
+                    const y = Math.sin(angle) * radiusBasis * radiusScalarDaughter;
+                    const dX = radiusBasis * radiusScalarDautherOffsetX;
+                    const dY = radiusBasis * radiusScalarDautherOffsetY;
+                    const diamond = [[-dX, 0], [0, -dY], [dX, 0], [0, dY]];
+                    for (let j = 0; j < diamond.length; j++) {
+                        const offsetX = diamond[j][0];
+                        const offsetY = diamond[j][1];
+                        offsets.push([
+                            x + offsetX * Math.cos(angle) - offsetY * Math.sin(angle),
+                            y + offsetX * Math.sin(angle) + offsetY * Math.cos(angle),
+                            0,
+                        ]);
+                    }
+                }
+                return offsets;
+            })();
+
+            function getBootBoardPositions() {
                 const caches = window.__LIGHTSTAGE_LAYOUT_CACHES__;
                 const cache = caches && caches['icosahedron-r1_5-d5'];
                 return cache && Array.isArray(cache.positions) && cache.positions.length
                     ? cache.positions
                     : fallbackPositions;
+            }
+
+            function getApproxBootLedPositions(boardPositions) {
+                const key = `${boardPositions.length}:${bootLedLocalOffsets.length}`;
+                if (cachedApproxLedKey === key && cachedApproxLedPositions.length) return cachedApproxLedPositions;
+                const ledPositions = [];
+                for (let i = 0; i < boardPositions.length; i++) {
+                    const board = boardPositions[i];
+                    const bx = board[0];
+                    const by = board[1];
+                    const bz = board[2];
+                    const boardLen = Math.hypot(bx, by, bz) || 1;
+                    const nx = bx / boardLen;
+                    const ny = by / boardLen;
+                    const nz = bz / boardLen;
+                    const useAltUp = Math.abs(ny) > 0.92;
+                    const ux = useAltUp ? 1 : 0;
+                    const uy = useAltUp ? 0 : 1;
+                    const uz = 0;
+                    let tx = uy * nz - uz * ny;
+                    let ty = uz * nx - ux * nz;
+                    let tz = ux * ny - uy * nx;
+                    const tLen = Math.hypot(tx, ty, tz) || 1;
+                    tx /= tLen;
+                    ty /= tLen;
+                    tz /= tLen;
+                    const sx = ny * tz - nz * ty;
+                    const sy = nz * tx - nx * tz;
+                    const sz = nx * ty - ny * tx;
+                    for (let j = 0; j < bootLedLocalOffsets.length; j++) {
+                        const local = bootLedLocalOffsets[j];
+                        ledPositions.push([
+                            bx + tx * local[0] + sx * local[1],
+                            by + ty * local[0] + sy * local[1],
+                            bz + tz * local[0] + sz * local[1],
+                        ]);
+                    }
+                }
+                cachedApproxLedKey = key;
+                cachedApproxLedPositions = ledPositions;
+                return ledPositions;
+            }
+
+            function getBootPositions() {
+                const liveLedTargets = window.__BOOT_LIGHTSTAGE_LED_TARGETS__;
+                if (Array.isArray(liveLedTargets) && liveLedTargets.length) return liveLedTargets;
+                return getApproxBootLedPositions(getBootBoardPositions());
             }
 
             function getProgressiveOrder(count) {
@@ -453,10 +557,11 @@
                 if (finishRequested && finishFlyProgress > 0.985 && (now - startTime) >= minBootPreviewMs) {
                     startBootFade();
                 }
-                const revealCount = Math.min(
+                const baseRevealCount = Math.min(
                     particleCount,
                     Math.max(320, Math.floor(320 + elapsed * 2100))
                 );
+                const revealCount = finishRequested ? particleCount : baseRevealCount;
                 const textPoints = getBootTextPoints(particleCount);
 
                 ctx.clearRect(0, 0, width, height);
@@ -534,13 +639,13 @@
                     });
                 }
 
-                if (finishFlyProgress > 0.02) {
+                if (!finishRequested && elapsed < 1.7) {
                     drawItems.sort((a, b) => a.visualDepth - b.visualDepth);
                 }
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
                 drawItems.forEach((item) => {
-                    if (item.textHold < 0.82) {
+                    if (!finishRequested && item.textHold < 0.82) {
                         ctx.beginPath();
                         const haloAlpha = item.alpha * lerp(0.035 + item.rim * 0.075, 0.012, item.textHold);
                         const haloRadius = item.radius * lerp(1.8 + item.rim * 0.7, 1.15, item.textHold);
@@ -549,7 +654,7 @@
                         ctx.fill();
                     }
 
-                    if (item.textHold < 0.35 && item.visualDepth > 0.32 && (item.rim > 0.55 || item.morph > 0.9)) {
+                    if (!finishRequested && item.textHold < 0.35 && item.visualDepth > 0.32 && (item.rim > 0.55 || item.morph > 0.9)) {
                         const arcStart = item.elapsed * 0.65 + item.sourceIndex * 0.37;
                         const arcLength = Math.PI * (0.28 + item.rim * 0.42);
                         ctx.beginPath();
@@ -1661,6 +1766,7 @@
                 }
                 if (lightboard.userData.revealProgress < 1) allRevealed = false;
             });
+            if (hasReveal) publishBootLedTargetsFromLightboards();
             if (hasReveal && allRevealed && !lightStageBuildInProgress && !lightStageRevealCompleteNotified) {
                 lightStageRevealCompleteNotified = true;
                 if (typeof window.__finishBootPreview === 'function') {
@@ -3866,6 +3972,34 @@
                 lightboardRefs.push({ lightboard, ledsAttr, ledsInit, ledLight });
             });
             lightboardRefsVersion++;
+            publishBootLedTargetsFromLightboards();
+        }
+
+        function publishBootLedTargetsFromLightboards() {
+            if (!lightboards || !lightboards.children || lightboards.children.length === 0) return;
+            const targets = [];
+            const boards = lightboards.children
+                .slice()
+                .sort((a, b) => (a.userData.stageIndex || 0) - (b.userData.stageIndex || 0));
+            boards.forEach((lightboard) => {
+                const ledData = lightboard.userData && lightboard.userData['leds'];
+                const localPositions = ledData && ledData.positions;
+                if (!localPositions || !localPositions.length) return;
+                lightboard.updateMatrixWorld(true);
+                for (let i = 0; i < localPositions.length; i += 3) {
+                    _bootLedTargetPoint
+                        .set(localPositions[i], localPositions[i + 1], localPositions[i + 2])
+                        .applyMatrix4(lightboard.matrixWorld);
+                    targets.push([
+                        _bootLedTargetPoint.x,
+                        _bootLedTargetPoint.y,
+                        _bootLedTargetPoint.z,
+                    ]);
+                }
+            });
+            if (targets.length) {
+                window.__BOOT_LIGHTSTAGE_LED_TARGETS__ = targets;
+            }
         }
 
         function getAutoFps(scale = 1) {
@@ -5388,6 +5522,7 @@
         const _illuminationOffset = new THREE.Vector3();
         const _illuminationLightPos = new THREE.Vector3();
         const _bootProjectionPoint = new THREE.Vector3();
+        const _bootLedTargetPoint = new THREE.Vector3();
         const _olatColor = new THREE.Color();
         const _whiteColor = new THREE.Color();
         const _warmupColor = new THREE.Color();
