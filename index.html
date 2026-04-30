@@ -193,6 +193,42 @@
                 return order;
             }
 
+            function clamp01(value) {
+                return Math.max(0, Math.min(1, value));
+            }
+
+            function smoothstep(edge0, edge1, value) {
+                const t = clamp01((value - edge0) / (edge1 - edge0));
+                return t * t * (3 - 2 * t);
+            }
+
+            function lerp(a, b, t) {
+                return a + (b - a) * t;
+            }
+
+            function getFlightPosition(index, elapsed) {
+                const angle = index * 2.3999632297 + elapsed * 1.15;
+                const secondary = index * 0.917 + elapsed * 0.75;
+                const ring = 1.45 + (index % 9) * 0.055;
+                return [
+                    Math.cos(angle) * ring + Math.sin(secondary) * 0.25,
+                    Math.sin(index * 1.173 + elapsed * 0.9) * 0.95,
+                    Math.sin(angle * 0.73) * 0.75 - 0.2,
+                ];
+            }
+
+            function projectBootPoint(point) {
+                const cameraZ = 2.5;
+                const fov = 75 * Math.PI / 180;
+                const focal = (height * 0.5) / Math.tan(fov * 0.5);
+                const denom = Math.max(0.1, cameraZ - point[2]);
+                return {
+                    x: width * 0.5 + point[0] * focal / denom,
+                    y: height * 0.5 - point[1] * focal / denom,
+                    depth: clamp01((point[2] + 1.5) / 3),
+                };
+            }
+
             function drawBootPreview(now) {
                 if (!running) return;
 
@@ -201,43 +237,50 @@
                 const elapsed = (now - startTime) / 1000;
                 const revealCount = Math.min(
                     positions.length,
-                    Math.max(12, Math.floor(18 + elapsed * 95))
+                    Math.max(56, Math.floor(64 + elapsed * 120))
                 );
-                const centerX = width * 0.5;
-                const centerY = height * 0.52;
-                const scale = Math.min(width, height) * 0.31;
-                const rotY = elapsed * 0.18;
-                const rotX = -0.22 + Math.sin(elapsed * 0.32) * 0.04;
-                const cosY = Math.cos(rotY);
-                const sinY = Math.sin(rotY);
-                const cosX = Math.cos(rotX);
-                const sinX = Math.sin(rotX);
 
                 ctx.clearRect(0, 0, width, height);
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
 
                 for (let i = 0; i < revealCount; i++) {
-                    const p = positions[order[i]];
-                    const x0 = p[0];
-                    const y0 = p[1];
-                    const z0 = p[2];
-                    const x1 = x0 * cosY - z0 * sinY;
-                    const z1 = x0 * sinY + z0 * cosY;
-                    const y1 = y0 * cosX - z1 * sinX;
-                    const z2 = y0 * sinX + z1 * cosX;
-                    const perspective = 1.9 / (2.5 - z2);
-                    const x = centerX + x1 * scale * perspective;
-                    const y = centerY - y1 * scale * perspective;
-                    const depth = Math.max(0.25, Math.min(1, (z2 + 1.5) / 3));
-                    const localReveal = Math.max(0, Math.min(1, (elapsed * 95 - i + 18) / 10));
-                    const radius = (1.2 + depth * 2.8) * (0.45 + localReveal * 0.55);
-                    const alpha = Math.min(0.95, (0.18 + depth * 0.55) * localReveal);
-                    const channel = i % 6;
+                    const sourceIndex = order[i];
+                    const target = positions[sourceIndex];
+                    const flight = getFlightPosition(sourceIndex, elapsed);
+                    const localDelay = i * 0.0035;
+                    const morph = smoothstep(0.35 + localDelay, 2.05 + localDelay, elapsed);
+                    const localReveal = smoothstep(0.0, 0.18, elapsed - i / 120);
+                    const point = [
+                        lerp(flight[0], target[0], morph),
+                        lerp(flight[1], target[1], morph),
+                        lerp(flight[2], target[2], morph),
+                    ];
+                    const projected = projectBootPoint(point);
+                    const targetProjected = projectBootPoint(target);
+                    const x = lerp(projected.x, targetProjected.x, smoothstep(1.65, 2.45, elapsed));
+                    const y = lerp(projected.y, targetProjected.y, smoothstep(1.65, 2.45, elapsed));
+                    const depth = Math.max(0.25, projected.depth);
+                    const radius = (1.6 + depth * 3.0) * (0.55 + localReveal * 0.45);
+                    const alpha = Math.min(0.9, (0.16 + depth * 0.58) * localReveal);
+                    const channel = sourceIndex % 6;
                     const color = channel === 1 ? '255,80,70'
                         : channel === 3 ? '80,255,130'
                         : channel === 5 ? '80,130,255'
                         : '235,245,255';
+
+                    ctx.beginPath();
+                    ctx.fillStyle = `rgba(${color},${alpha * 0.16})`;
+                    ctx.arc(x, y, radius * 3.4, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    if (morph > 0.86) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(${color},${0.08 * morph})`;
+                        ctx.lineWidth = 1;
+                        ctx.arc(x, y, radius * 2.0, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
 
                     ctx.beginPath();
                     ctx.fillStyle = `rgba(${color},${alpha})`;
