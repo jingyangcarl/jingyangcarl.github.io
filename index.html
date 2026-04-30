@@ -458,15 +458,24 @@
                         points.push({ x: width * 0.5, y: height * 0.5, depth: 0.5, rim: 0.3, line: 'title', seed: hashUnit(i + 1) });
                     }
                 } else {
-                    const titleCandidates = candidates.filter((candidate) => candidate.line === 'title');
-                    const subtitleCandidates = candidates.filter((candidate) => candidate.line === 'subtitle');
+                    const edgeBand = 0.36;
+                    const allEdgeCandidates = candidates.filter((candidate) => candidate.borderDepth <= edgeBand);
+                    const titleEdgeCandidates = allEdgeCandidates.filter((candidate) => candidate.line === 'title');
+                    const subtitleEdgeCandidates = allEdgeCandidates.filter((candidate) => candidate.line === 'subtitle');
+                    const titleCandidates = titleEdgeCandidates.length
+                        ? titleEdgeCandidates
+                        : candidates.filter((candidate) => candidate.line === 'title');
+                    const subtitleCandidates = subtitleEdgeCandidates.length
+                        ? subtitleEdgeCandidates
+                        : candidates.filter((candidate) => candidate.line === 'subtitle');
+                    const fallbackCandidates = allEdgeCandidates.length ? allEdgeCandidates : candidates;
                     const subtitleCount = subtitleCandidates.length
                         ? Math.min(safeCount - 1, Math.max(1, Math.floor(safeCount * 0.32)))
                         : 0;
                     const titleCount = safeCount - subtitleCount;
                     const addSamples = (source, count, offset) => {
                         if (!count) return;
-                        const list = source.length ? source : candidates;
+                        const list = source.length ? source : fallbackCandidates;
                         const step = list.length / count;
                         for (let j = 0; j < count; j++) {
                             const pointIndex = offset + j;
@@ -490,7 +499,7 @@
                     addSamples(subtitleCandidates, subtitleCount, titleCount);
                     while (points.length < safeCount) {
                         const i = points.length;
-                        const candidate = candidates[Math.min(candidates.length - 1, Math.floor((i + 0.5) * candidates.length / safeCount))];
+                        const candidate = fallbackCandidates[Math.min(fallbackCandidates.length - 1, Math.floor((i + 0.5) * fallbackCandidates.length / safeCount))];
                         const seed = hashUnit((candidate.x + 19) * 12.9898 + (candidate.y + 31) * 78.233 + i * 0.37);
                         const nx = (candidate.x / Math.max(1, textCanvas.width)) * 2 - 1;
                         const ny = (candidate.y / Math.max(1, textCanvas.height)) * 2 - 1;
