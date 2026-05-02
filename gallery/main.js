@@ -31,7 +31,6 @@ const copyDescription = document.getElementById("copyDescription");
 const copyAuthor = document.getElementById("copyAuthor");
 const copyPanel = document.querySelector(".copyPanel");
 
-const GALLERY_ITEM_LIMIT = 2;
 const RESOLUTION_OPTIONS = {
   ultra: { maxTextureSize: 8192, segments: 1280, mobileSegments: 520 },
   high: { maxTextureSize: 6144, segments: 920, mobileSegments: 400 },
@@ -1410,7 +1409,7 @@ function createViewerContactShadow() {
 }
 
 function galleryItems() {
-  return state.items.slice(0, GALLERY_ITEM_LIMIT);
+  return state.items;
 }
 
 function normalizeGalleryIndex(index, itemCount = galleryItems().length) {
@@ -1646,8 +1645,9 @@ function addImages(items) {
   const incoming = uniqueImages(items);
   if (!incoming.length) return;
 
-  state.items = uniqueImages([...incoming, ...state.items]);
-  state.currentIndex = 0;
+  const firstIncomingIndex = state.items.length;
+  state.items = uniqueImages([...state.items, ...incoming]);
+  state.currentIndex = Math.min(firstIncomingIndex, state.items.length - 1);
   state.shotIndex = 0;
   state.shotStartedAt = performance.now();
   shotLabel.textContent = shots[state.shotIndex].name;
