@@ -280,6 +280,11 @@ const reliefFragment = `
   varying float vLum;
   varying float vHeight;
 
+  vec3 boostColor(vec3 color, float amount) {
+    float lum = dot(color, vec3(0.299, 0.587, 0.114));
+    return clamp(mix(vec3(lum), color, amount), vec3(0.0), vec3(1.35));
+  }
+
   void main() {
     vec3 source = texture2D(uMap, vSampleUv).rgb;
     float relief = smoothstep(0.04, 0.86, vLum);
@@ -292,16 +297,19 @@ const reliefFragment = `
     float specular = pow(smoothstep(0.54, 1.0, relief) * contour, 2.35);
     float scan = smoothstep(0.06, 0.0, abs(vUv.x - (0.48 + sin(uTime * 0.18) * 0.18))) * relief * uMotion;
 
-    vec3 porcelain = mix(vec3(0.38, 0.48, 0.5), vec3(0.93, 0.98, 0.98), relief);
-    vec3 color = mix(porcelain, source, 0.08);
+    vec3 chroma = boostColor(source, 1.55);
+    vec3 reliefColor = chroma * (0.56 + relief * 0.62);
+    vec3 porcelain = mix(vec3(0.36, 0.43, 0.45), vec3(0.9, 0.98, 0.96), relief);
+    vec3 color = mix(porcelain, reliefColor, 0.72);
+    color = mix(color, source * (0.88 + relief * 0.38), 0.34);
     color *= heightLight;
     color *= stripes;
-    color += vec3(0.9, 1.0, 1.0) * pow(relief, 3.0) * (0.035 + uActive * 0.07);
-    color += vec3(0.62, 0.82, 0.82) * ridge * (0.025 + uActive * 0.05);
+    color += mix(chroma, vec3(0.96, 1.0, 0.98), 0.44) * pow(relief, 3.0) * (0.04 + uActive * 0.08);
+    color += mix(chroma, vec3(0.62, 0.82, 0.82), 0.52) * ridge * (0.035 + uActive * 0.06);
     color += vec3(0.86, 0.98, 0.96) * edge * 0.025;
     color += vec3(0.86, 0.96, 0.96) * specular * 0.22;
-    color += vec3(0.8, 0.96, 0.95) * scan * 0.045;
-    color *= 0.88;
+    color += mix(chroma, vec3(0.8, 0.96, 0.95), 0.42) * scan * 0.06;
+    color *= 0.94;
     gl_FragColor = vec4(color, 1.0);
   }
 `;
@@ -344,8 +352,9 @@ const ghostFragment = `
     vec3 source = texture2D(uMap, coverUv(vUv)).rgb;
     float lum = dot(source, vec3(0.299, 0.587, 0.114));
     float stripe = 0.9 + 0.1 * sin((vUv.y + uTime * 0.025) * 620.0);
-    vec3 color = mix(vec3(0.02, 0.09, 0.095), vec3(0.48, 0.72, 0.72), smoothstep(0.08, 0.86, lum)) * stripe;
-    gl_FragColor = vec4(color, 0.62);
+    vec3 chroma = clamp(mix(vec3(lum), source, 1.4), vec3(0.0), vec3(1.2));
+    vec3 color = mix(chroma * 0.34, chroma * 1.12 + vec3(0.04, 0.08, 0.075), smoothstep(0.08, 0.86, lum)) * stripe;
+    gl_FragColor = vec4(color, 0.68);
   }
 `;
 
@@ -389,10 +398,11 @@ const floorFragment = `
     float wetSheen = pow(center, 6.2) * smoothstep(0.0, 0.35, vUv.y) * smoothstep(0.98, 0.26, vUv.y);
     float floorRipple = 0.98 + 0.02 * sin(vUv.y * 34.0 + uTime * 0.2 + sin(vUv.x * 9.0) * 1.2);
 
-    vec3 lightColor = mix(vec3(0.2, 0.46, 0.48), vec3(0.82, 0.98, 0.96), emission);
+    vec3 reflectedColor = clamp(mix(vec3(lum), blurred, 1.45), vec3(0.0), vec3(1.2));
+    vec3 lightColor = mix(reflectedColor * 0.42, reflectedColor * 1.12 + vec3(0.06, 0.1, 0.095), emission);
     vec3 color = lightColor * reflectedShape * floorRipple * 0.62;
-    color += vec3(0.72, 0.94, 0.92) * wetSheen * 0.36;
-    color += blurred * 0.02 * reflectedShape;
+    color += mix(reflectedColor, vec3(0.72, 0.94, 0.92), 0.38) * wetSheen * 0.34;
+    color += reflectedColor * 0.12 * reflectedShape;
 
     float alpha = (0.05 + emission * 0.2) * reflectedShape + wetSheen * 0.18;
     gl_FragColor = vec4(color, alpha * uIntensity);
