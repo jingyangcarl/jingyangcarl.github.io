@@ -1605,10 +1605,16 @@ function hydrateImages(items) {
 
 function addImages(items) {
   const incoming = uniqueImages(items);
-  state.items = uniqueImages([...state.items, ...incoming]);
-  clampCurrentGalleryIndex();
+  if (!incoming.length) return;
+
+  state.items = uniqueImages([...incoming, ...state.items]);
+  state.currentIndex = 0;
+  state.shotIndex = 0;
+  state.shotStartedAt = performance.now();
+  shotLabel.textContent = shots[state.shotIndex].name;
+  updateShotChrome();
   renderFilmStrip();
-  if (incoming.length) setSettingsOpen(true);
+  setSettingsOpen(true);
   hydrateImages(incoming);
 }
 
