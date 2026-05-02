@@ -528,6 +528,13 @@ const shots = [
 
 const cameraPathPoint = new THREE.Vector3();
 const cameraFocusPoint = new THREE.Vector3();
+const pointerCamera = {
+  target: new THREE.Vector2(),
+  current: new THREE.Vector2(),
+  strength: 0,
+  lastMovedAt: 0,
+  insideScene: false,
+};
 
 function resolutionOption() {
   return RESOLUTION_OPTIONS[state.resolution] || RESOLUTION_OPTIONS.ultra;
@@ -1495,6 +1502,28 @@ function markPointerActive() {
   pointerIdleTimer = window.setTimeout(() => setPointerActive(false), 1800);
 }
 
+function updatePointerCamera(event) {
+  markPointerActive();
+
+  if (event.target.closest("button, input, select, .hudControls, .filmStrip, .siteHeader")) {
+    pointerCamera.insideScene = false;
+    return;
+  }
+
+  const rect = app.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const x = THREE.MathUtils.clamp(((event.clientX - rect.left) / rect.width - 0.5) * 2, -1, 1);
+  const y = THREE.MathUtils.clamp((0.5 - (event.clientY - rect.top) / rect.height) * 2, -1, 1);
+  pointerCamera.target.set(x, y);
+  pointerCamera.insideScene = true;
+  pointerCamera.lastMovedAt = performance.now();
+}
+
+function fadePointerCamera() {
+  pointerCamera.insideScene = false;
+  pointerCamera.target.set(0, 0);
+}
+
 function updateDisplayControl() {
   if (displaySelect) displaySelect.value = state.displayMode;
   settingsPanel?.classList.toggle("isFullDisplay", state.displayMode === "full");
@@ -1695,7 +1724,24 @@ function hasImageFiles(event) {
   return [...(event.dataTransfer?.items || [])].some((item) => item.kind === "file" && item.type.startsWith("image/"));
 }
 
-function animateCamera(now) {
+function applyPointerCameraFollow(now, dt) {
+  const recentlyMoved = pointerCamera.insideScene && now - pointerCamera.lastMovedAt < 1400;
+  const motionTarget = recentlyMoved ? 1 : 0;
+  const followSmoothing = 1 - Math.exp(-dt * 6.2);
+  const strengthSmoothing = 1 - Math.exp(-dt * 4.4);
+  pointerCamera.current.lerp(pointerCamera.target, followSmoothing);
+  pointerCamera.strength += (motionTarget - pointerCamera.strength) * strengthSmoothing;
+
+  const x = pointerCamera.current.x * pointerCamera.strength;
+  const y = pointerCamera.current.y * pointerCamera.strength;
+  camera.position.x += x * 0.055;
+  camera.position.y += y * 0.032;
+  camera.position.z += Math.abs(x) * 0.012;
+  cameraFocusPoint.x += x * 0.085;
+  cameraFocusPoint.y += y * 0.045;
+}
+
+function animateCamera(now, dt) {
   const shot = shots[state.shotIndex];
   const elapsed = now - state.shotStartedAt;
   const progress = Math.min(elapsed / shot.duration, 1);
@@ -1716,6 +1762,7 @@ function animateCamera(now) {
   camera.position.x += Math.sin(elapsed * 0.00051 + shotPhase + 0.9) * 0.018 * drift * movementEnvelope;
   camera.position.y += Math.sin(elapsed * 0.00083 + shotPhase * 0.4) * 0.014 * drift * movementEnvelope;
   camera.position.z += Math.cos(elapsed * 0.00046 + shotPhase) * 0.02 * drift * movementEnvelope;
+  applyPointerCameraFollow(now, dt);
   camera.fov = THREE.MathUtils.lerp(shot.fovFrom ?? camera.fov, shot.fovTo ?? shot.fovFrom ?? camera.fov, eased);
   camera.updateProjectionMatrix();
   camera.lookAt(cameraFocusPoint);
@@ -1789,7 +1836,7 @@ function animate() {
   activeLight.intensity = 0.85 + Math.sin(elapsed * 1.4) * 0.11 * cinematicEnergy;
   bloomPass.strength = 0.065 + Math.sin(elapsed * 0.9) * 0.015 * cinematicEnergy;
 
-  if (state.cinematic) animateCamera(now);
+  if (state.cinematic) animateCamera(now, dt);
   composer.render(dt);
 }
 
@@ -1838,10 +1885,11 @@ document.addEventListener("click", (event) => {
   setSettingsOpen(false);
 });
 
-app.addEventListener("pointermove", markPointerActive);
+app.addEventListener("pointermove", updatePointerCamera);
 app.addEventListener("pointerleave", () => {
   window.clearTimeout(pointerIdleTimer);
   setPointerActive(false);
+  fadePointerCamera();
 });
 
 window.addEventListener("dragover", (event) => {
