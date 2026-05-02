@@ -151,9 +151,764 @@
         (function () {
             const canvas = document.getElementById('bootPreviewCanvas');
             if (!canvas) return;
+            const bootLayoutCacheUrl = 'static/cache/lightstage-icosahedron-r1_5-d5.js';
+            const cvprVideoLoopMode = new URLSearchParams(window.location.search).has('cvprVideo');
 
-            const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
-            if (!ctx) return;
+            function ensureLightStageLayoutCacheReady() {
+                if (window.__LIGHTSTAGE_LAYOUT_CACHE_READY__) return;
+                window.__LIGHTSTAGE_LAYOUT_CACHE_READY__ = new Promise((resolve) => {
+                    let settled = false;
+                    let loadStarted = false;
+                    const done = (ok) => {
+                        if (settled) return;
+                        settled = true;
+                        resolve(ok);
+                    };
+                    const loadCache = () => {
+                        if (loadStarted) return;
+                        loadStarted = true;
+                        const script = document.createElement('script');
+                        script.src = bootLayoutCacheUrl;
+                        script.async = true;
+                        script.onload = () => done(true);
+                        script.onerror = () => done(false);
+                        document.head.appendChild(script);
+                        window.setTimeout(() => done(false), 3200);
+                    };
+                    requestAnimationFrame(() => requestAnimationFrame(() => window.setTimeout(loadCache, 360)));
+                    window.setTimeout(loadCache, 900);
+                });
+            }
+
+            ensureLightStageLayoutCacheReady();
+
+            function startBootWorkerPreview() {
+                if (!canvas.transferControlToOffscreen || !window.Worker || !window.Blob || !window.URL) return false;
+
+                let running = true;
+                let fadeStarted = false;
+                let lastParticleCount = 0;
+                let lastTargetCount = 0;
+                const workerSource = `
+                    let canvas;
+                    let ctx;
+                    let width = 1;
+                    let height = 1;
+                    let running = true;
+                    let startTime = 0;
+                    let lastFrameTime = 0;
+                    let finishRequested = false;
+                    let finishRequestTime = 0;
+                    let fadePosted = false;
+                    let bootTargetProgress = 0;
+                    let bootDisplayProgress = 0;
+                    let boardTargetProgress = [];
+                    let boardDisplayProgress = [];
+                    let boardTargetProgressTotal = 0;
+                    let boardTargetProgressActive = 0;
+                    let cachedTextKey = '';
+                    let cachedTextPoints = [];
+                    let cachedTextRevealKey = '';
+                    let cachedTextRevealOrder = [];
+                    let cachedApproxLedKey = '';
+                    let cachedApproxLedPositions = [];
+                    let cachedCachePositions = null;
+                    let liveLedTargets = null;
+                    let liveProjectedTargets = null;
+                    let liveProjectedMeta = null;
+                    let loopVideoMode = false;
+                    const minBootPreviewMs = 2600;
+                    const minBootTitleHoldMs = 3200;
+
+                    function clamp01(value) {
+                        return Math.max(0, Math.min(1, value));
+                    }
+
+                    function smoothstep(edge0, edge1, value) {
+                        const t = clamp01((value - edge0) / (edge1 - edge0));
+                        return t * t * (3 - 2 * t);
+                    }
+
+                    function lerp(a, b, t) {
+                        return a + (b - a) * t;
+                    }
+
+                    function hashUnit(value) {
+                        const hashed = Math.sin(value) * 43758.5453;
+                        return hashed - Math.floor(hashed);
+                    }
+
+                    const fallbackPositions = (() => {
+                        const positions = [];
+                        const count = 252;
+                        const golden = Math.PI * (3 - Math.sqrt(5));
+                        for (let i = 0; i < count; i++) {
+                            const y = 1 - (i / (count - 1)) * 2;
+                            const radius = Math.sqrt(Math.max(0, 1 - y * y));
+                            const theta = i * golden;
+                            positions.push([
+                                1.5 * Math.cos(theta) * radius,
+                                1.5 * y,
+                                1.5 * Math.sin(theta) * radius,
+                            ]);
+                        }
+                        return positions;
+                    })();
+
+                    const bootLedLocalOffsets = (() => {
+                        const offsets = [];
+                        const radiusBasis = 0.05;
+                        const radiusScalarColorLED = 0.5;
+                        const radiusScalarDaughter = 2.1;
+                        const radiusScalarDautherOffsetX = 0.3;
+                        const radiusScalarDautherOffsetY = 0.15;
+                        const hexagonCornerVertices = [];
+                        for (let i = 0; i < 6; i++) {
+                            const angle = (i / 6) * Math.PI * 2;
+                            hexagonCornerVertices.push({
+                                x: Math.cos(angle) * radiusBasis,
+                                y: Math.sin(angle) * radiusBasis,
+                            });
+                        }
+                        for (let i = 0; i < 6; i++) {
+                            const start = hexagonCornerVertices[i];
+                            const end = hexagonCornerVertices[(i + 1) % 6];
+                            for (let j = 1; j <= 2; j++) {
+                                const t = j / 2;
+                                offsets.push([
+                                    start.x * (1 - t) + end.x * t,
+                                    start.y * (1 - t) + end.y * t,
+                                    0,
+                                ]);
+                            }
+                        }
+                        for (let i = 0; i < 6; i++) {
+                            const angle = (i / 6) * Math.PI * 2;
+                            offsets.push([
+                                Math.cos(angle) * radiusBasis * radiusScalarColorLED,
+                                Math.sin(angle) * radiusBasis * radiusScalarColorLED,
+                                0,
+                            ]);
+                        }
+                        for (let i = 0; i < 6; i++) {
+                            const angle = (i / 6) * Math.PI * 2;
+                            const x = Math.cos(angle) * radiusBasis * radiusScalarDaughter;
+                            const y = Math.sin(angle) * radiusBasis * radiusScalarDaughter;
+                            const dX = radiusBasis * radiusScalarDautherOffsetX;
+                            const dY = radiusBasis * radiusScalarDautherOffsetY;
+                            const diamond = [[-dX, 0], [0, -dY], [dX, 0], [0, dY]];
+                            for (let j = 0; j < diamond.length; j++) {
+                                const offsetX = diamond[j][0];
+                                const offsetY = diamond[j][1];
+                                offsets.push([
+                                    x + offsetX * Math.cos(angle) - offsetY * Math.sin(angle),
+                                    y + offsetX * Math.sin(angle) + offsetY * Math.cos(angle),
+                                    0,
+                                ]);
+                            }
+                        }
+                        return offsets;
+                    })();
+
+                    function getBootBoardPositions() {
+                        return cachedCachePositions && cachedCachePositions.length ? cachedCachePositions : fallbackPositions;
+                    }
+
+                    function getApproxBootLedPositions(boardPositions) {
+                        const key = String(boardPositions.length) + ':' + String(bootLedLocalOffsets.length);
+                        if (cachedApproxLedKey === key && cachedApproxLedPositions.length) return cachedApproxLedPositions;
+                        const ledPositions = [];
+                        for (let i = 0; i < boardPositions.length; i++) {
+                            const board = boardPositions[i];
+                            const bx = board[0];
+                            const by = board[1];
+                            const bz = board[2];
+                            const boardLen = Math.hypot(bx, by, bz) || 1;
+                            const nx = bx / boardLen;
+                            const ny = by / boardLen;
+                            const nz = bz / boardLen;
+                            const useAltUp = Math.abs(ny) > 0.92;
+                            const ux = useAltUp ? 1 : 0;
+                            const uy = useAltUp ? 0 : 1;
+                            const uz = 0;
+                            let tx = uy * nz - uz * ny;
+                            let ty = uz * nx - ux * nz;
+                            let tz = ux * ny - uy * nx;
+                            const tLen = Math.hypot(tx, ty, tz) || 1;
+                            tx /= tLen;
+                            ty /= tLen;
+                            tz /= tLen;
+                            const sx = ny * tz - nz * ty;
+                            const sy = nz * tx - nx * tz;
+                            const sz = nx * ty - ny * tx;
+                            for (let j = 0; j < bootLedLocalOffsets.length; j++) {
+                                const local = bootLedLocalOffsets[j];
+                                ledPositions.push([
+                                    bx + tx * local[0] + sx * local[1],
+                                    by + ty * local[0] + sy * local[1],
+                                    bz + tz * local[0] + sz * local[1],
+                                ]);
+                            }
+                        }
+                        cachedApproxLedKey = key;
+                        cachedApproxLedPositions = ledPositions;
+                        return ledPositions;
+                    }
+
+                    function getBootPositions() {
+                        return liveLedTargets && liveLedTargets.length
+                            ? liveLedTargets
+                            : getApproxBootLedPositions(getBootBoardPositions());
+                    }
+
+                    function getBootPreviewParticleCount(targetCount) {
+                        const compactViewport = Math.min(width || 1, height || 1) < 680;
+                        const sizeBudget = compactViewport ? 900 : 1500;
+                        const areaBudget = Math.floor(Math.sqrt(Math.max(1, (width || 1) * (height || 1))) * (compactViewport ? 1.5 : 1.25));
+                        return Math.max(360, Math.min(targetCount, sizeBudget, areaBudget));
+                    }
+
+                    function getBootTargetIndex(particleIndex, particleCount, targetCount) {
+                        if (targetCount <= particleCount) return particleIndex % Math.max(1, targetCount);
+                        return Math.min(targetCount - 1, Math.floor((particleIndex + 0.5) * targetCount / particleCount));
+                    }
+
+                    function getBootTextPoints(count) {
+                        const safeCount = Math.max(1, count || 1);
+                        const key = String(safeCount) + ':' + String(Math.round(width)) + ':' + String(Math.round(height));
+                        if (cachedTextKey === key && cachedTextPoints.length) return cachedTextPoints;
+                        const offscreen = new OffscreenCanvas(1, 1);
+                        const textCtx = offscreen.getContext('2d', { willReadFrequently: true });
+                        if (!textCtx) return [];
+                        const maxLineWidth = Math.max(300, Math.min(width * 0.74, 780));
+                        let titleSize = Math.max(22, Math.min(58, width * 0.049, height * 0.084));
+                        let subtitleSize = titleSize * 0.68;
+                        const title = 'The Algorithmic Aura';
+                        const subtitle = '(CVPR 2026 Art)';
+                        const titleFont = () => '800 ' + titleSize + 'px Arial, Helvetica, sans-serif';
+                        const subtitleFont = () => '800 ' + subtitleSize + 'px Arial, Helvetica, sans-serif';
+                        const setFonts = () => {
+                            textCtx.font = titleFont();
+                            const titleWidth = textCtx.measureText(title).width;
+                            textCtx.font = subtitleFont();
+                            const subtitleWidth = textCtx.measureText(subtitle).width;
+                            return Math.max(titleWidth, subtitleWidth);
+                        };
+                        while (titleSize > 20 && setFonts() > maxLineWidth) {
+                            titleSize *= 0.92;
+                            subtitleSize = titleSize * 0.68;
+                        }
+                        const maskScale = 0.58;
+                        const textWidth = Math.ceil(Math.min(maxLineWidth, setFonts() + titleSize * 0.95));
+                        const textHeight = Math.ceil(titleSize * 2.38);
+                        offscreen.width = Math.max(1, Math.ceil(textWidth * maskScale));
+                        offscreen.height = Math.max(1, Math.ceil(textHeight * maskScale));
+                        textCtx.clearRect(0, 0, offscreen.width, offscreen.height);
+                        textCtx.save();
+                        textCtx.scale(maskScale, maskScale);
+                        textCtx.textAlign = 'center';
+                        textCtx.textBaseline = 'middle';
+                        textCtx.fillStyle = '#ffffff';
+                        textCtx.strokeStyle = '#ffffff';
+                        textCtx.lineJoin = 'round';
+                        textCtx.lineWidth = Math.max(1.4, titleSize * 0.04);
+                        textCtx.font = titleFont();
+                        textCtx.strokeText(title, textWidth * 0.5, titleSize * 0.72);
+                        textCtx.fillText(title, textWidth * 0.5, titleSize * 0.72);
+                        textCtx.font = subtitleFont();
+                        textCtx.lineWidth = Math.max(1.1, subtitleSize * 0.045);
+                        textCtx.strokeText(subtitle, textWidth * 0.5, titleSize * 1.66);
+                        textCtx.fillText(subtitle, textWidth * 0.5, titleSize * 1.66);
+                        textCtx.restore();
+
+                        const imageData = textCtx.getImageData(0, 0, offscreen.width, offscreen.height).data;
+                        const mask = new Uint8Array(offscreen.width * offscreen.height);
+                        for (let index = 0; index < mask.length; index++) {
+                            if (imageData[index * 4 + 3] > 28) mask[index] = 1;
+                        }
+                        const candidates = [];
+                        const centerX = offscreen.width * 0.5;
+                        const centerY = offscreen.height * 0.5;
+                        const lineSplitY = titleSize * 1.24 * maskScale;
+                        const hasText = (x, y) => (
+                            x >= 0 && x < offscreen.width && y >= 0 && y < offscreen.height && mask[y * offscreen.width + x]
+                        );
+                        const pushContourPoint = (sourceX, sourceY, x, y) => {
+                            const sweep = (Math.atan2(y - centerY, x - centerX) + Math.PI) / (Math.PI * 2);
+                            const seed = hashUnit((x + 19) * 12.9898 + (y + 31) * 78.233);
+                            candidates.push({
+                                x,
+                                y,
+                                alpha: imageData[((sourceY * offscreen.width + sourceX) * 4) + 3],
+                                line: y < lineSplitY ? 'title' : 'subtitle',
+                                reveal: sweep * 0.09 + seed * 0.025,
+                            });
+                        };
+                        for (let y = 0; y < offscreen.height; y++) {
+                            for (let x = 0; x < offscreen.width; x++) {
+                                const index = y * offscreen.width + x;
+                                if (!mask[index]) continue;
+                                if (!hasText(x - 1, y)) pushContourPoint(x, y, x - 0.5, y);
+                                if (!hasText(x + 1, y)) pushContourPoint(x, y, x + 0.5, y);
+                                if (!hasText(x, y - 1)) pushContourPoint(x, y, x, y - 0.5);
+                                if (!hasText(x, y + 1)) pushContourPoint(x, y, x, y + 0.5);
+                            }
+                        }
+                        candidates.sort((a, b) => a.reveal - b.reveal || a.y - b.y || a.x - b.x);
+                        const titleCandidates = candidates.filter((candidate) => candidate.line === 'title');
+                        const subtitleCandidates = candidates.filter((candidate) => candidate.line === 'subtitle');
+                        const fallbackCandidates = candidates.length ? candidates : [{ x: offscreen.width * 0.5, y: offscreen.height * 0.5, line: 'title', reveal: 0 }];
+                        const originX = width * 0.5 - textWidth * 0.5;
+                        const originY = height * 0.43 - textHeight * 0.5;
+                        const points = [];
+                        const subtitleCount = subtitleCandidates.length ? Math.min(safeCount - 1, Math.max(1, Math.floor(safeCount * 0.32))) : 0;
+                        const titleCount = safeCount - subtitleCount;
+                        const addSamples = (source, count, offset) => {
+                            if (!count) return;
+                            const list = source.length ? source : fallbackCandidates;
+                            const step = list.length / count;
+                            for (let j = 0; j < count; j++) {
+                                const pointIndex = offset + j;
+                                const candidate = list[Math.min(list.length - 1, Math.floor((j + 0.5) * step))];
+                                const seed = hashUnit((candidate.x + 19) * 12.9898 + (candidate.y + 31) * 78.233 + pointIndex * 0.37);
+                                const nx = (candidate.x / Math.max(1, offscreen.width)) * 2 - 1;
+                                const ny = (candidate.y / Math.max(1, offscreen.height)) * 2 - 1;
+                                points.push({
+                                    x: originX + candidate.x / maskScale,
+                                    y: originY + candidate.y / maskScale,
+                                    depth: clamp01(0.46 + (1 - Math.abs(nx)) * 0.22 - Math.abs(ny) * 0.08 + (seed - 0.5) * 0.18),
+                                    rim: clamp01(0.2 + Math.abs(nx) * 0.28 + (1 - Math.abs(ny)) * 0.12 + seed * 0.16),
+                                    line: candidate.line,
+                                    reveal: candidate.reveal,
+                                    seed,
+                                });
+                            }
+                        };
+                        addSamples(titleCandidates, titleCount, 0);
+                        addSamples(subtitleCandidates, subtitleCount, titleCount);
+                        while (points.length < safeCount) {
+                            addSamples(fallbackCandidates, 1, points.length);
+                        }
+                        cachedTextKey = key;
+                        cachedTextPoints = points;
+                        cachedTextRevealKey = '';
+                        cachedTextRevealOrder = [];
+                        return points;
+                    }
+
+                    function getTextRevealOrder(textPoints) {
+                        const key = cachedTextKey;
+                        if (cachedTextRevealKey === key && cachedTextRevealOrder.length === textPoints.length) return cachedTextRevealOrder;
+                        const order = textPoints.map((_, index) => index);
+                        order.sort((a, b) => {
+                            const pa = textPoints[a];
+                            const pb = textPoints[b];
+                            return (pa.reveal || 0) - (pb.reveal || 0) || a - b;
+                        });
+                        cachedTextRevealKey = key;
+                        cachedTextRevealOrder = order;
+                        return order;
+                    }
+
+                    function getBootLedColor(targetIndex) {
+                        const channel = targetIndex % 6;
+                        if (channel === 1) return [255, 80, 70];
+                        if (channel === 3) return [80, 255, 130];
+                        if (channel === 5) return [80, 130, 255];
+                        return [235, 245, 255];
+                    }
+
+                    function getBootParticleColor(textPoint, targetIndex, ledFly) {
+                        const ledColor = getBootLedColor(targetIndex);
+                        if (!textPoint || textPoint.line !== 'subtitle') {
+                            const t = smoothstep(0.1, 0.82, ledFly);
+                            return [
+                                Math.round(lerp(238, ledColor[0], t)),
+                                Math.round(lerp(246, ledColor[1], t)),
+                                Math.round(lerp(255, ledColor[2], t)),
+                            ];
+                        }
+                        const textColor = [
+                            Math.round(lerp(ledColor[0], 150, 0.72)),
+                            Math.round(lerp(ledColor[1], 205, 0.72)),
+                            Math.round(lerp(ledColor[2], 255, 0.72)),
+                        ];
+                        const t = smoothstep(0.1, 0.82, ledFly);
+                        return [
+                            Math.round(lerp(textColor[0], ledColor[0], t)),
+                            Math.round(lerp(textColor[1], ledColor[1], t)),
+                            Math.round(lerp(textColor[2], ledColor[2], t)),
+                        ];
+                    }
+
+                    function getBootVisualDepth(point) {
+                        return smoothstep(0.08, 0.98, clamp01((point[2] + 1.8) / 3.6));
+                    }
+
+                    function getBootRimFactor(point) {
+                        const length = Math.hypot(point[0], point[1], point[2]) || 1;
+                        const sideOn = 1 - Math.abs(point[2]) / length;
+                        return smoothstep(0.58, 0.98, sideOn);
+                    }
+
+                    function setBootBuildProgress(progress) {
+                        bootTargetProgress = Math.max(bootTargetProgress, clamp01(progress));
+                    }
+
+                    function setBootBoardProgress(index, progress) {
+                        const boardProgress = clamp01(progress);
+                        const previousProgress = boardTargetProgress[index];
+                        const nextProgress = Math.max(previousProgress || 0, boardProgress);
+                        if (previousProgress === undefined) boardTargetProgressActive++;
+                        boardTargetProgressTotal += nextProgress - (previousProgress || 0);
+                        boardTargetProgress[index] = nextProgress;
+                        setBootBuildProgress(boardTargetProgressTotal / Math.max(1, boardTargetProgressActive));
+                    }
+
+                    function projectTarget(target, index, positionsLength) {
+                        if (
+                            liveProjectedTargets
+                            && liveProjectedTargets.length === positionsLength
+                            && liveProjectedMeta
+                            && liveProjectedMeta.width === width
+                            && liveProjectedMeta.height === height
+                        ) {
+                            const projected = liveProjectedTargets[index];
+                            if (projected) return { x: projected[0], y: projected[1], depth: projected[2] || 0 };
+                        }
+                        const focal = (height * 0.5) / Math.tan((75 * Math.PI / 180) * 0.5);
+                        const denom = Math.max(0.1, 2.5 - target[2]);
+                        return {
+                            x: width * 0.5 + target[0] * focal / denom,
+                            y: height * 0.5 - target[1] * focal / denom,
+                            depth: clamp01((target[2] + 1.5) / 3),
+                        };
+                    }
+
+                    function drawBootPreview(now) {
+                        if (!running || !ctx) return;
+                        const positions = getBootPositions();
+                        const targetCount = positions.length;
+                        const particleCount = getBootPreviewParticleCount(targetCount);
+                        const baseElapsed = (now - startTime) / 1000;
+                        const elapsed = Math.max(loopVideoMode && !finishRequested ? 3.05 : 0.42, baseElapsed);
+                        const frameDelta = Math.min(0.25, Math.max(0, (now - lastFrameTime) / 1000));
+                        lastFrameTime = now;
+                        const progressFollow = finishRequested ? 7.5 : 3.2;
+                        bootDisplayProgress += (bootTargetProgress - bootDisplayProgress) * Math.min(1, frameDelta * progressFollow);
+                        if (finishRequested && finishRequestTime) {
+                            bootDisplayProgress = Math.max(bootDisplayProgress, smoothstep(0, 0.9, (now - finishRequestTime) / 1000));
+                        }
+                        const finishFlightStart = finishRequested ? Math.max(finishRequestTime || 0, startTime + minBootTitleHoldMs) : 0;
+                        const finishElapsed = finishRequested && finishFlightStart ? Math.max(0, (now - finishFlightStart) / 1000) : 0;
+                        const finishFlyProgress = finishRequested ? smoothstep(0.02, 1.05, finishElapsed) : 0;
+                        if (!fadePosted && finishRequested && finishFlyProgress > 0.985 && (now - startTime) >= minBootPreviewMs) {
+                            fadePosted = true;
+                            self.postMessage({ type: 'startFade' });
+                        }
+                        const titleRevealProgress = smoothstep(0.08, (minBootTitleHoldMs / 1000) - 0.45, elapsed);
+                        const revealCount = Math.min(
+                            particleCount,
+                            Math.floor(lerp(Math.min(360, particleCount), particleCount, titleRevealProgress))
+                        );
+                        const textPoints = getBootTextPoints(particleCount);
+                        const order = getTextRevealOrder(textPoints);
+                        const stageCoverAlpha = finishRequested ? 1 - smoothstep(0.52, 0.98, finishFlyProgress) : 1;
+                        ctx.clearRect(0, 0, width, height);
+                        if (stageCoverAlpha > 0.005) {
+                            ctx.fillStyle = 'rgba(0,0,0,' + stageCoverAlpha + ')';
+                            ctx.fillRect(0, 0, width, height);
+                        }
+                        ctx.save();
+                        ctx.globalCompositeOperation = 'lighter';
+                        const particleRevealRate = Math.max(900, particleCount / 2.1);
+                        for (let i = 0; i < revealCount; i++) {
+                            const particleIndex = order[i];
+                            const sourceIndex = getBootTargetIndex(particleIndex, particleCount, targetCount);
+                            const target = positions[sourceIndex];
+                            const targetBoardProgress = boardTargetProgress[sourceIndex] || 0;
+                            const currentBoardProgress = boardDisplayProgress[sourceIndex] || 0;
+                            const boardProgress = currentBoardProgress + (targetBoardProgress - currentBoardProgress) * Math.min(1, frameDelta * 6.5);
+                            boardDisplayProgress[sourceIndex] = boardProgress;
+                            const localDelay = i / Math.max(1, particleCount) * 0.14;
+                            const ledFly = finishRequested ? smoothstep(0.02 + localDelay * 0.65, 0.96 + localDelay * 0.65, finishElapsed) : 0;
+                            const localReveal = smoothstep(0.0, 0.18, elapsed - i / particleRevealRate);
+                            if (localReveal <= 0.015) continue;
+                            const textPoint = textPoints[particleIndex] || textPoints[i % Math.max(1, textPoints.length)];
+                            const targetProjected = projectTarget(target, sourceIndex, positions.length);
+                            const textDrift = (1 - ledFly) * (0.035 + (textPoint ? textPoint.depth : 0.5) * 0.09);
+                            const textX = (textPoint ? textPoint.x : width * 0.5) + Math.sin(elapsed * 1.2 + sourceIndex * 0.19) * textDrift;
+                            const textY = (textPoint ? textPoint.y : height * 0.5) + Math.cos(elapsed * 1.05 + sourceIndex * 0.23) * textDrift * 0.45;
+                            const x = lerp(textX, targetProjected.x, ledFly);
+                            const y = lerp(textY, targetProjected.y, ledFly);
+                            const targetDepth = getBootVisualDepth(target);
+                            const textDepth = clamp01((textPoint ? textPoint.depth : 0.5) + Math.sin(elapsed * 1.25 + particleIndex * 0.17) * 0.035);
+                            const visualDepth = lerp(textDepth, targetDepth, ledFly);
+                            const rim = lerp(textPoint ? textPoint.rim : 0.3, getBootRimFactor(target), ledFly);
+                            const seed = hashUnit(particleIndex * 12.9898);
+                            const sizeJitter = 0.86 + seed * 0.42;
+                            const alivePulse = 1 + Math.sin(elapsed * 2.2 + particleIndex * 0.13) * (finishRequested ? 0.015 : 0.075);
+                            const depthSize = visualDepth * visualDepth;
+                            const perspectiveSize = 0.55 + depthSize * 3.25 + rim * 0.45;
+                            const textHold = 1 - ledFly;
+                            const baseRadius = perspectiveSize * (0.52 + localReveal * 0.48) * alivePulse * sizeJitter;
+                            const textRadius = textPoint && textPoint.line === 'subtitle' ? 0.68 + textDepth * 0.24 : 0.92 + textDepth * 0.36;
+                            const radius = lerp(baseRadius, textRadius, textHold * 0.9);
+                            const boardFade = 1 - smoothstep(0.84, 1, ledFly);
+                            const baseAlpha = (0.045 + depthSize * 0.62 + rim * 0.08) * localReveal * Math.max(0.1, boardFade);
+                            const alpha = Math.min(1, baseAlpha * (1 + textHold * 0.45) + textHold * localReveal * 0.62);
+                            const color = getBootParticleColor(textPoint, sourceIndex, ledFly);
+                            const colorCss = String(color[0]) + ',' + String(color[1]) + ',' + String(color[2]);
+                            if (!finishRequested && textHold < 0.82 && particleIndex % 9 === 0) {
+                                ctx.beginPath();
+                                ctx.fillStyle = 'rgba(' + colorCss + ',' + (alpha * (0.03 + rim * 0.04)) + ')';
+                                ctx.arc(x, y, radius * (1.55 + rim * 0.45), 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+                            ctx.fillStyle = 'rgba(' + colorCss + ',' + alpha + ')';
+                            if (radius < 1.25 && textHold > 0.45) {
+                                const size = Math.max(1, radius * 1.7);
+                                ctx.fillRect(x - size * 0.5, y - size * 0.5, size, size);
+                            } else {
+                                ctx.beginPath();
+                                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+                        }
+                        ctx.restore();
+                        self.postMessage({ type: 'metrics', particleCount, targetCount });
+                        scheduleFrame();
+                    }
+
+                    function scheduleFrame() {
+                        if (!running) return;
+                        if (self.requestAnimationFrame) {
+                            self.requestAnimationFrame(drawBootPreview);
+                        } else {
+                            self.setTimeout(() => drawBootPreview(performance.now()), 16);
+                        }
+                    }
+
+                    async function loadCache(url) {
+                        try {
+                            const response = await fetch(url, { cache: 'force-cache' });
+                            if (!response.ok) return;
+                            const text = await response.text();
+                            const start = text.indexOf('{"icosahedron-r1_5-d5"');
+                            const end = text.lastIndexOf('});');
+                            if (start < 0 || end <= start) return;
+                            const caches = JSON.parse(text.slice(start, end));
+                            const cache = caches && caches['icosahedron-r1_5-d5'];
+                            if (cache && Array.isArray(cache.positions) && cache.positions.length) {
+                                cachedCachePositions = cache.positions;
+                                cachedApproxLedKey = '';
+                                cachedApproxLedPositions = [];
+                            }
+                        } catch (error) {
+                            self.postMessage({ type: 'warning', message: 'boot cache load failed' });
+                        }
+                    }
+
+                    self.onmessage = (event) => {
+                        const message = event.data || {};
+                        if (message.type === 'init') {
+                            canvas = message.canvas;
+                            width = Math.max(1, Math.floor(message.width || 1));
+                            height = Math.max(1, Math.floor(message.height || 1));
+                            loopVideoMode = !!message.loopVideoMode;
+                            canvas.width = width;
+                            canvas.height = height;
+                            ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+                            startTime = performance.now();
+                            lastFrameTime = startTime;
+                            if (message.cacheUrl) loadCache(message.cacheUrl);
+                            scheduleFrame();
+                        } else if (message.type === 'resize') {
+                            width = Math.max(1, Math.floor(message.width || 1));
+                            height = Math.max(1, Math.floor(message.height || 1));
+                            if (canvas) {
+                                canvas.width = width;
+                                canvas.height = height;
+                            }
+                            cachedTextKey = '';
+                        } else if (message.type === 'progress') {
+                            setBootBuildProgress(message.progress || 0);
+                        } else if (message.type === 'boardProgress') {
+                            setBootBoardProgress(message.index || 0, message.progress || 0);
+                        } else if (message.type === 'finish') {
+                            if (!finishRequested) {
+                                finishRequested = true;
+                                finishRequestTime = performance.now();
+                                setBootBuildProgress(1);
+                            }
+                        } else if (message.type === 'ledTargets') {
+                            liveLedTargets = Array.isArray(message.targets) ? message.targets : null;
+                            liveProjectedTargets = Array.isArray(message.projectedTargets) ? message.projectedTargets : null;
+                            liveProjectedMeta = message.projectedMeta || null;
+                        } else if (message.type === 'stop') {
+                            running = false;
+                        }
+                    };
+                `;
+
+                let worker;
+                try {
+                    const blob = new Blob([workerSource], { type: 'application/javascript' });
+                    const workerUrl = URL.createObjectURL(blob);
+                    worker = new Worker(workerUrl);
+                    URL.revokeObjectURL(workerUrl);
+                } catch (error) {
+                    console.warn('Boot preview worker unavailable', error);
+                    return false;
+                }
+
+                const offscreen = canvas.transferControlToOffscreen();
+                worker.postMessage({
+                    type: 'init',
+                    canvas: offscreen,
+                    width: window.innerWidth || 1,
+                    height: window.innerHeight || 1,
+                    cacheUrl: bootLayoutCacheUrl,
+                    loopVideoMode: cvprVideoLoopMode,
+                }, [offscreen]);
+
+                worker.onmessage = (event) => {
+                    const message = event.data || {};
+                    if (message.type === 'startFade') {
+                        if (fadeStarted || !running) return;
+                        fadeStarted = true;
+                        canvas.style.opacity = '0';
+                        window.setTimeout(() => {
+                            running = false;
+                            worker.postMessage({ type: 'stop' });
+                            canvas.style.display = 'none';
+                        }, 520);
+                    } else if (message.type === 'metrics') {
+                        lastParticleCount = message.particleCount || lastParticleCount;
+                        lastTargetCount = message.targetCount || lastTargetCount;
+                        window.__BOOT_PREVIEW_PARTICLE_COUNT__ = lastParticleCount;
+                        window.__BOOT_PREVIEW_TARGET_COUNT__ = lastTargetCount;
+                    } else if (message.type === 'warning') {
+                        console.warn(message.message);
+                    }
+                };
+                worker.onerror = (event) => {
+                    console.warn('Boot preview worker failed', event.message || event);
+                };
+
+                const postResize = () => {
+                    worker.postMessage({
+                        type: 'resize',
+                        width: window.innerWidth || 1,
+                        height: window.innerHeight || 1,
+                    });
+                };
+                window.addEventListener('resize', postResize, { passive: true });
+
+                window.__isBootPreviewActive = function () {
+                    return running && !fadeStarted && canvas.style.display !== 'none';
+                };
+                window.__finishBootPreview = function () {
+                    if (!running || fadeStarted) return;
+                    worker.postMessage({ type: 'finish' });
+                };
+                window.__setBootPreviewBuildProgress = function (completed, total) {
+                    if (!running || fadeStarted) return;
+                    const denominator = Math.max(1, total || 1);
+                    worker.postMessage({ type: 'progress', progress: completed / denominator });
+                };
+                window.__setBootPreviewBoardProgress = function (index, progress) {
+                    if (!running || fadeStarted) return;
+                    worker.postMessage({ type: 'boardProgress', index, progress });
+                };
+                window.__setBootPreviewLedTargets = function (targets, projectedTargets, projectedMeta) {
+                    if (!running || fadeStarted) return;
+                    worker.postMessage({
+                        type: 'ledTargets',
+                        targets,
+                        projectedTargets,
+                        projectedMeta,
+                    });
+                };
+                window.__BOOT_WORKER_PREVIEW_ACTIVE__ = true;
+                return true;
+            }
+
+            if (startBootWorkerPreview()) return;
+
+            const gl = canvas.getContext('webgl', {
+                alpha: true,
+                antialias: false,
+                depth: false,
+                stencil: false,
+                premultipliedAlpha: false,
+                preserveDrawingBuffer: false,
+            });
+            const ctx = gl ? null : canvas.getContext('2d', { alpha: true, desynchronized: true });
+            if (!gl && !ctx) return;
+
+            function createBootShader(glContext, type, source) {
+                const shader = glContext.createShader(type);
+                glContext.shaderSource(shader, source);
+                glContext.compileShader(shader);
+                if (!glContext.getShaderParameter(shader, glContext.COMPILE_STATUS)) {
+                    console.warn(glContext.getShaderInfoLog(shader));
+                    glContext.deleteShader(shader);
+                    return null;
+                }
+                return shader;
+            }
+
+            function setupBootWebgl(glContext) {
+                const vertexShader = createBootShader(glContext, glContext.VERTEX_SHADER, `
+                    attribute vec2 a_position;
+                    attribute float a_size;
+                    attribute vec4 a_color;
+                    uniform vec2 u_resolution;
+                    varying vec4 v_color;
+                    void main() {
+                        vec2 zeroToOne = a_position / u_resolution;
+                        vec2 clip = zeroToOne * 2.0 - 1.0;
+                        gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+                        gl_PointSize = a_size;
+                        v_color = a_color;
+                    }
+                `);
+                const fragmentShader = createBootShader(glContext, glContext.FRAGMENT_SHADER, `
+                    precision mediump float;
+                    varying vec4 v_color;
+                    void main() {
+                        vec2 p = gl_PointCoord - vec2(0.5);
+                        float d = length(p);
+                        float a = smoothstep(0.5, 0.32, d);
+                        gl_FragColor = vec4(v_color.rgb, v_color.a * a);
+                    }
+                `);
+                if (!vertexShader || !fragmentShader) return null;
+                const program = glContext.createProgram();
+                glContext.attachShader(program, vertexShader);
+                glContext.attachShader(program, fragmentShader);
+                glContext.linkProgram(program);
+                if (!glContext.getProgramParameter(program, glContext.LINK_STATUS)) {
+                    console.warn(glContext.getProgramInfoLog(program));
+                    return null;
+                }
+                const buffer = glContext.createBuffer();
+                glContext.useProgram(program);
+                glContext.enable(glContext.BLEND);
+                glContext.blendFunc(glContext.SRC_ALPHA, glContext.ONE);
+                return {
+                    program,
+                    buffer,
+                    positionLoc: glContext.getAttribLocation(program, 'a_position'),
+                    sizeLoc: glContext.getAttribLocation(program, 'a_size'),
+                    colorLoc: glContext.getAttribLocation(program, 'a_color'),
+                    resolutionLoc: glContext.getUniformLocation(program, 'u_resolution'),
+                };
+            }
+
+            const bootGl = gl ? setupBootWebgl(gl) : null;
+            let bootParticleData = new Float32Array(0);
 
             let width = 0;
             let height = 0;
@@ -168,12 +923,15 @@
             let bootDisplayProgress = 0;
             let boardTargetProgress = [];
             let boardDisplayProgress = [];
+            let boardTargetProgressTotal = 0;
+            let boardTargetProgressActive = 0;
             let cachedTextKey = '';
             let cachedTextPoints = [];
             let cachedTextRevealKey = '';
             let cachedTextRevealOrder = [];
             let cachedApproxLedKey = '';
             let cachedApproxLedPositions = [];
+            const loopVideoMode = cvprVideoLoopMode;
             const minBootPreviewMs = 2600;
             const minBootTitleHoldMs = 3200;
             const cacheReadyTimeoutMs = 3200;
@@ -225,7 +983,12 @@
                 height = window.innerHeight || 1;
                 canvas.width = Math.floor(width * dpr);
                 canvas.height = Math.floor(height * dpr);
-                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                if (ctx) {
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                }
+                if (gl) {
+                    gl.viewport(0, 0, canvas.width, canvas.height);
+                }
             }
 
             const bootLedLocalOffsets = (() => {
@@ -340,8 +1103,8 @@
 
             function getBootPreviewParticleCount(targetCount) {
                 const compactViewport = Math.min(width || 1, height || 1) < 680;
-                const sizeBudget = compactViewport ? 1750 : 3400;
-                const areaBudget = Math.floor(Math.sqrt(Math.max(1, (width || 1) * (height || 1))) * (compactViewport ? 2.15 : 2.75));
+                const sizeBudget = compactViewport ? 820 : 980;
+                const areaBudget = Math.floor(Math.sqrt(Math.max(1, (width || 1) * (height || 1))) * (compactViewport ? 1.35 : 0.95));
                 return Math.max(360, Math.min(targetCount, sizeBudget, areaBudget));
             }
 
@@ -366,7 +1129,7 @@
 
                 const maxLineWidth = Math.max(300, Math.min(width * 0.74, 780));
                 let titleSize = Math.max(22, Math.min(58, width * 0.049, height * 0.084));
-                let subtitleSize = titleSize * 0.56;
+                let subtitleSize = titleSize * 0.68;
                 const title = 'The Algorithmic Aura';
                 const subtitle = '(CVPR 2026 Art)';
                 const titleFont = () => `800 ${titleSize}px Arial, Helvetica, sans-serif`;
@@ -381,14 +1144,17 @@
 
                 while (titleSize > 20 && setFonts() > maxLineWidth) {
                     titleSize *= 0.92;
-                    subtitleSize = titleSize * 0.56;
+                    subtitleSize = titleSize * 0.68;
                 }
 
+                const maskScale = 0.58;
                 const textWidth = Math.ceil(Math.min(maxLineWidth, setFonts() + titleSize * 0.95));
                 const textHeight = Math.ceil(titleSize * 2.38);
-                textCanvas.width = Math.max(1, textWidth);
-                textCanvas.height = Math.max(1, textHeight);
+                textCanvas.width = Math.max(1, Math.ceil(textWidth * maskScale));
+                textCanvas.height = Math.max(1, Math.ceil(textHeight * maskScale));
                 textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+                textCtx.save();
+                textCtx.scale(maskScale, maskScale);
                 textCtx.textAlign = 'center';
                 textCtx.textBaseline = 'middle';
                 textCtx.fillStyle = '#ffffff';
@@ -396,12 +1162,13 @@
                 textCtx.lineJoin = 'round';
                 textCtx.lineWidth = Math.max(1.4, titleSize * 0.04);
                 textCtx.font = titleFont();
-                textCtx.strokeText(title, textCanvas.width * 0.5, titleSize * 0.72);
-                textCtx.fillText(title, textCanvas.width * 0.5, titleSize * 0.72);
+                textCtx.strokeText(title, textWidth * 0.5, titleSize * 0.72);
+                textCtx.fillText(title, textWidth * 0.5, titleSize * 0.72);
                 textCtx.font = subtitleFont();
                 textCtx.lineWidth = Math.max(1.1, subtitleSize * 0.045);
-                textCtx.strokeText(subtitle, textCanvas.width * 0.5, titleSize * 1.66);
-                textCtx.fillText(subtitle, textCanvas.width * 0.5, titleSize * 1.66);
+                textCtx.strokeText(subtitle, textWidth * 0.5, titleSize * 1.66);
+                textCtx.fillText(subtitle, textWidth * 0.5, titleSize * 1.66);
+                textCtx.restore();
 
                 const sampleStep = 1;
                 const imageData = textCtx.getImageData(0, 0, textCanvas.width, textCanvas.height).data;
@@ -415,7 +1182,7 @@
                 }
                 const centerX = textCanvas.width * 0.5;
                 const centerY = textCanvas.height * 0.5;
-                const lineSplitY = titleSize * 1.24;
+                const lineSplitY = titleSize * 1.24 * maskScale;
                 const hasText = (x, y) => (
                     x >= 0
                     && x < textCanvas.width
@@ -447,8 +1214,10 @@
                 }
                 candidates.sort((a, b) => a.reveal - b.reveal || a.y - b.y || a.x - b.x);
 
-                const originX = width * 0.5 - textCanvas.width * 0.5;
-                const originY = height * 0.43 - textCanvas.height * 0.5;
+                const originX = width * 0.5 - textWidth * 0.5;
+                const originY = height * 0.43 - textHeight * 0.5;
+                const toDisplayX = (x) => x / maskScale;
+                const toDisplayY = (y) => y / maskScale;
                 const points = [];
                 if (!candidates.length) {
                     for (let i = 0; i < safeCount; i++) {
@@ -459,7 +1228,7 @@
                     const subtitleCandidates = candidates.filter((candidate) => candidate.line === 'subtitle');
                     const fallbackCandidates = candidates;
                     const subtitleCount = subtitleCandidates.length
-                        ? Math.min(safeCount - 1, Math.max(1, Math.floor(safeCount * 0.26)))
+                        ? Math.min(safeCount - 1, Math.max(1, Math.floor(safeCount * 0.32)))
                         : 0;
                     const titleCount = safeCount - subtitleCount;
                     const addSamples = (source, count, offset) => {
@@ -474,8 +1243,8 @@
                             const ny = (candidate.y / Math.max(1, textCanvas.height)) * 2 - 1;
                             const jitter = sampleStep * 0.01;
                             points.push({
-                                x: originX + candidate.x + (seed - 0.5) * jitter,
-                                y: originY + candidate.y + (hashUnit(seed * 91.7 + pointIndex) - 0.5) * jitter,
+                                x: originX + toDisplayX(candidate.x) + (seed - 0.5) * jitter,
+                                y: originY + toDisplayY(candidate.y) + (hashUnit(seed * 91.7 + pointIndex) - 0.5) * jitter,
                                 depth: clamp01(0.46 + (1 - Math.abs(nx)) * 0.22 - Math.abs(ny) * 0.08 + (seed - 0.5) * 0.18),
                                 rim: clamp01(0.2 + Math.abs(nx) * 0.28 + (1 - Math.abs(ny)) * 0.12 + seed * 0.16),
                                 line: candidate.line,
@@ -494,8 +1263,8 @@
                         const ny = (candidate.y / Math.max(1, textCanvas.height)) * 2 - 1;
                         const jitter = sampleStep * 0.01;
                         points.push({
-                            x: originX + candidate.x + (seed - 0.5) * jitter,
-                            y: originY + candidate.y + (hashUnit(seed * 91.7 + i) - 0.5) * jitter,
+                            x: originX + toDisplayX(candidate.x) + (seed - 0.5) * jitter,
+                            y: originY + toDisplayY(candidate.y) + (hashUnit(seed * 91.7 + i) - 0.5) * jitter,
                             depth: clamp01(0.46 + (1 - Math.abs(nx)) * 0.22 - Math.abs(ny) * 0.08 + (seed - 0.5) * 0.18),
                             rim: clamp01(0.2 + Math.abs(nx) * 0.28 + (1 - Math.abs(ny)) * 0.12 + seed * 0.16),
                             line: candidate.line,
@@ -547,7 +1316,7 @@
                 return [235, 245, 255];
             }
 
-            function getBootParticleColor(textPoint, targetIndex, ledFly) {
+            function getBootParticleColorArray(textPoint, targetIndex, ledFly) {
                 const ledColor = getBootLedColor(targetIndex);
                 const textColor = textPoint && textPoint.line === 'subtitle'
                     ? [
@@ -561,7 +1330,11 @@
                     Math.round(lerp(textColor[0], ledColor[0], colorFly)),
                     Math.round(lerp(textColor[1], ledColor[1], colorFly)),
                     Math.round(lerp(textColor[2], ledColor[2], colorFly)),
-                ].join(',');
+                ];
+            }
+
+            function getBootParticleColor(textPoint, targetIndex, ledFly) {
+                return getBootParticleColorArray(textPoint, targetIndex, ledFly).join(',');
             }
 
             function setBootBuildProgress(progress) {
@@ -571,7 +1344,14 @@
 
             function setBootBoardProgress(index, progress) {
                 const boardProgress = clamp01(progress);
-                boardTargetProgress[index] = Math.max(boardTargetProgress[index] || 0, boardProgress);
+                const previousProgress = boardTargetProgress[index];
+                const nextProgress = Math.max(previousProgress || 0, boardProgress);
+                if (previousProgress === undefined) {
+                    boardTargetProgressActive++;
+                }
+                boardTargetProgressTotal += nextProgress - (previousProgress || 0);
+                boardTargetProgress[index] = nextProgress;
+                setBootBuildProgress(boardTargetProgressTotal / Math.max(1, boardTargetProgressActive));
                 if (boardProgress > 0.01) canvas.classList.add('boot-settling');
             }
 
@@ -586,7 +1366,7 @@
             }
 
             window.__isBootPreviewActive = function () {
-                return running && canvas.style.display !== 'none';
+                return running && !fadeStarted && canvas.style.display !== 'none';
             };
 
             function getBootVisualDepth(point) {
@@ -600,27 +1380,92 @@
                 return smoothstep(0.58, 0.98, sideOn);
             }
 
-            function projectBootPoint(point) {
-                const liveProject = window.__projectBootLightStagePoint;
-                if (typeof liveProject === 'function') {
-                    const projected = liveProject(point);
-                    if (
-                        projected
-                        && Number.isFinite(projected.x)
-                        && Number.isFinite(projected.y)
-                    ) {
-                        return projected;
-                    }
+            function drawBootParticleValues(x, y, radius, alpha, color, rim, morph, textHold, visualDepth, sourceIndex, elapsedValue) {
+                if (!finishRequested && textHold < 0.82 && sourceIndex % 3 === 0) {
+                    ctx.beginPath();
+                    const haloAlpha = alpha * lerp(0.035 + rim * 0.075, 0.012, textHold);
+                    const haloRadius = radius * lerp(1.8 + rim * 0.7, 1.15, textHold);
+                    ctx.fillStyle = `rgba(${color},${haloAlpha})`;
+                    ctx.arc(x, y, haloRadius, 0, Math.PI * 2);
+                    ctx.fill();
                 }
-                const cameraZ = 2.5;
-                const fov = 75 * Math.PI / 180;
-                const focal = (height * 0.5) / Math.tan(fov * 0.5);
-                const denom = Math.max(0.1, cameraZ - point[2]);
-                return {
-                    x: width * 0.5 + point[0] * focal / denom,
-                    y: height * 0.5 - point[1] * focal / denom,
-                    depth: clamp01((point[2] + 1.5) / 3),
-                };
+
+                if (!finishRequested && sourceIndex % 8 === 0 && textHold < 0.35 && visualDepth > 0.32 && (rim > 0.55 || morph > 0.9)) {
+                    const arcStart = elapsedValue * 0.65 + sourceIndex * 0.37;
+                    const arcLength = Math.PI * (0.28 + rim * 0.42);
+                    ctx.beginPath();
+                    ctx.strokeStyle = `rgba(${color},${alpha * (0.1 + rim * 0.18)})`;
+                    ctx.lineWidth = 0.45 + visualDepth * 0.75;
+                    ctx.arc(x, y, radius * (1.2 + rim * 0.55), arcStart, arcStart + arcLength);
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = `rgba(${color},${alpha})`;
+                if (radius < 1.25 && textHold > 0.45) {
+                    const size = Math.max(1, radius * 1.7);
+                    ctx.fillRect(x - size * 0.5, y - size * 0.5, size, size);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            function drawBootParticleItem(item) {
+                drawBootParticleValues(
+                    item.x,
+                    item.y,
+                    item.radius,
+                    item.alpha,
+                    item.color,
+                    item.rim,
+                    item.morph,
+                    item.textHold,
+                    item.visualDepth,
+                    item.sourceIndex,
+                    item.elapsed
+                );
+            }
+
+            function ensureBootParticleDataCapacity(count) {
+                const required = count * 7;
+                if (bootParticleData.length >= required) return;
+                bootParticleData = new Float32Array(Math.max(required, bootParticleData.length * 2 || 4096));
+            }
+
+            function beginBootWebglFrame(stageCoverAlpha, particleCapacity) {
+                if (!bootGl) return;
+                ensureBootParticleDataCapacity(particleCapacity);
+                gl.viewport(0, 0, canvas.width, canvas.height);
+                gl.clearColor(0, 0, 0, stageCoverAlpha);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+            }
+
+            function writeBootWebglParticle(offset, x, y, radius, alpha, colorRgb) {
+                const size = Math.max(1.2, radius * 2.2);
+                bootParticleData[offset] = x;
+                bootParticleData[offset + 1] = y;
+                bootParticleData[offset + 2] = size;
+                bootParticleData[offset + 3] = colorRgb[0] / 255;
+                bootParticleData[offset + 4] = colorRgb[1] / 255;
+                bootParticleData[offset + 5] = colorRgb[2] / 255;
+                bootParticleData[offset + 6] = alpha;
+            }
+
+            function flushBootWebglParticles(count) {
+                if (!bootGl || count <= 0) return;
+                const stride = 7 * 4;
+                gl.useProgram(bootGl.program);
+                gl.bindBuffer(gl.ARRAY_BUFFER, bootGl.buffer);
+                gl.bufferData(gl.ARRAY_BUFFER, bootParticleData.subarray(0, count * 7), gl.DYNAMIC_DRAW);
+                gl.uniform2f(bootGl.resolutionLoc, width, height);
+                gl.enableVertexAttribArray(bootGl.positionLoc);
+                gl.vertexAttribPointer(bootGl.positionLoc, 2, gl.FLOAT, false, stride, 0);
+                gl.enableVertexAttribArray(bootGl.sizeLoc);
+                gl.vertexAttribPointer(bootGl.sizeLoc, 1, gl.FLOAT, false, stride, 2 * 4);
+                gl.enableVertexAttribArray(bootGl.colorLoc);
+                gl.vertexAttribPointer(bootGl.colorLoc, 4, gl.FLOAT, false, stride, 3 * 4);
+                gl.drawArrays(gl.POINTS, 0, count);
             }
 
             function drawBootPreview(now) {
@@ -631,7 +1476,8 @@
                 const particleCount = getBootPreviewParticleCount(targetCount);
                 window.__BOOT_PREVIEW_PARTICLE_COUNT__ = particleCount;
                 window.__BOOT_PREVIEW_TARGET_COUNT__ = targetCount;
-                const elapsed = Math.max(0.42, (now - startTime) / 1000);
+                const baseElapsed = (now - startTime) / 1000;
+                const elapsed = Math.max(loopVideoMode && !finishRequested ? 3.05 : 0.42, baseElapsed);
                 const frameDelta = Math.min(0.25, Math.max(0, (now - lastFrameTime) / 1000));
                 lastFrameTime = now;
                 const progressFollow = finishRequested ? 7.5 : 3.2;
@@ -660,16 +1506,38 @@
                 const textPoints = getBootTextPoints(particleCount);
                 const order = getTextRevealOrder(textPoints);
                 const revealCount = baseRevealCount;
+                const sortDrawItems = false;
+                const drawItems = sortDrawItems ? [] : null;
+                const useBootWebgl = !!bootGl;
+                const batchTextDots = !finishRequested && !useBootWebgl;
+                const titleDotPath = batchTextDots ? new Path2D() : null;
+                const subtitleDotPath = batchTextDots ? new Path2D() : null;
+                const projectedTargets = window.__BOOT_LIGHTSTAGE_PROJECTED_TARGETS__;
+                const projectedMeta = window.__BOOT_LIGHTSTAGE_PROJECTED_TARGETS_META__;
+                const canUseProjectedTargets = Array.isArray(projectedTargets)
+                    && projectedTargets.length === positions.length
+                    && projectedMeta
+                    && projectedMeta.width === width
+                    && projectedMeta.height === height;
+                const focal = (height * 0.5) / Math.tan((75 * Math.PI / 180) * 0.5);
+                const halfWidth = width * 0.5;
+                const halfHeight = height * 0.5;
 
-                ctx.clearRect(0, 0, width, height);
                 const stageCoverAlpha = finishRequested
                     ? 1 - smoothstep(0.52, 0.98, finishFlyProgress)
                     : 1;
-                if (stageCoverAlpha > 0.005) {
-                    ctx.fillStyle = `rgba(0,0,0,${stageCoverAlpha})`;
-                    ctx.fillRect(0, 0, width, height);
+                if (useBootWebgl) {
+                    beginBootWebglFrame(stageCoverAlpha, revealCount);
+                } else {
+                    ctx.clearRect(0, 0, width, height);
+                    if (stageCoverAlpha > 0.005) {
+                        ctx.fillStyle = `rgba(0,0,0,${stageCoverAlpha})`;
+                        ctx.fillRect(0, 0, width, height);
+                    }
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
                 }
-                const drawItems = [];
+                let webglParticleCount = 0;
                 const particleRevealRate = Math.max(900, particleCount / 2.1);
                 for (let i = 0; i < revealCount; i++) {
                     const particleIndex = order[i];
@@ -684,7 +1552,22 @@
                     const ledFly = finishRequested ? smoothstep(0.02 + localDelay * 0.65, 0.96 + localDelay * 0.65, finishElapsed) : 0;
                     const localReveal = smoothstep(0.0, 0.18, elapsed - i / particleRevealRate);
                     const textPoint = textPoints[particleIndex] || textPoints[i % Math.max(1, textPoints.length)];
-                    const targetProjected = projectBootPoint(target);
+                    let targetProjected;
+                    if (canUseProjectedTargets) {
+                        const projected = projectedTargets[sourceIndex];
+                        targetProjected = {
+                            x: projected[0],
+                            y: projected[1],
+                            depth: projected[2] || 0,
+                        };
+                    } else {
+                        const denom = Math.max(0.1, 2.5 - target[2]);
+                        targetProjected = {
+                            x: halfWidth + target[0] * focal / denom,
+                            y: halfHeight - target[1] * focal / denom,
+                            depth: clamp01((target[2] + 1.5) / 3),
+                        };
+                    }
                     const textDrift = (1 - ledFly) * (0.035 + (textPoint ? textPoint.depth : 0.5) * 0.09);
                     const textX = (textPoint ? textPoint.x : width * 0.5)
                         + Math.sin(elapsed * 1.2 + sourceIndex * 0.19) * textDrift;
@@ -710,54 +1593,59 @@
                     const boardFade = 1 - smoothstep(0.84, 1, ledFly);
                     const baseAlpha = (0.045 + depthSize * 0.62 + rim * 0.08) * localReveal * Math.max(0.1, boardFade);
                     const alpha = Math.min(1, baseAlpha * (1 + textHold * 0.45) + textHold * localReveal * 0.62);
-                    const color = getBootParticleColor(textPoint, sourceIndex, ledFly);
-                    drawItems.push({
-                        x,
-                        y,
-                        radius,
-                        alpha,
-                        color,
-                        rim,
-                        morph: ledFly,
-                        textHold,
-                        visualDepth,
-                        sourceIndex: particleIndex,
-                        elapsed,
-                    });
+                    if (useBootWebgl) {
+                        if (localReveal <= 0.015) continue;
+                        const colorRgb = ledFly < 0.01
+                            ? (textPoint && textPoint.line === 'subtitle' ? [150, 205, 255] : [238, 246, 255])
+                            : getBootParticleColorArray(textPoint, sourceIndex, ledFly);
+                        writeBootWebglParticle(webglParticleCount * 7, x, y, radius, alpha, colorRgb);
+                        webglParticleCount++;
+                        continue;
+                    }
+                    if (batchTextDots) {
+                        if (localReveal <= 0.015) continue;
+                        const size = Math.max(1, radius * 1.65);
+                        const path = textPoint && textPoint.line === 'subtitle' ? subtitleDotPath : titleDotPath;
+                        path.rect(x - size * 0.5, y - size * 0.5, size, size);
+                        continue;
+                    }
+                    const color = ledFly < 0.01
+                        ? (textPoint && textPoint.line === 'subtitle' ? '150,205,255' : '238,246,255')
+                        : getBootParticleColor(textPoint, sourceIndex, ledFly);
+                    if (sortDrawItems) {
+                        drawItems.push({
+                            x,
+                            y,
+                            radius,
+                            alpha,
+                            color,
+                            rim,
+                            morph: ledFly,
+                            textHold,
+                            visualDepth,
+                            sourceIndex: particleIndex,
+                            elapsed,
+                        });
+                    } else {
+                        drawBootParticleValues(x, y, radius, alpha, color, rim, ledFly, textHold, visualDepth, particleIndex, elapsed);
+                    }
                 }
 
-                if (!finishRequested && elapsed < 1.7) {
+                if (sortDrawItems) {
                     drawItems.sort((a, b) => a.visualDepth - b.visualDepth);
+                    drawItems.forEach(drawBootParticleItem);
                 }
-                ctx.save();
-                ctx.globalCompositeOperation = 'lighter';
-                drawItems.forEach((item) => {
-                    if (!finishRequested && item.textHold < 0.82 && item.sourceIndex % 3 === 0) {
-                        ctx.beginPath();
-                        const haloAlpha = item.alpha * lerp(0.035 + item.rim * 0.075, 0.012, item.textHold);
-                        const haloRadius = item.radius * lerp(1.8 + item.rim * 0.7, 1.15, item.textHold);
-                        ctx.fillStyle = `rgba(${item.color},${haloAlpha})`;
-                        ctx.arc(item.x, item.y, haloRadius, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-
-                    if (!finishRequested && item.sourceIndex % 8 === 0 && item.textHold < 0.35 && item.visualDepth > 0.32 && (item.rim > 0.55 || item.morph > 0.9)) {
-                        const arcStart = item.elapsed * 0.65 + item.sourceIndex * 0.37;
-                        const arcLength = Math.PI * (0.28 + item.rim * 0.42);
-                        ctx.beginPath();
-                        ctx.strokeStyle = `rgba(${item.color},${item.alpha * (0.1 + item.rim * 0.18)})`;
-                        ctx.lineWidth = 0.45 + item.visualDepth * 0.75;
-                        ctx.arc(item.x, item.y, item.radius * (1.2 + item.rim * 0.55), arcStart, arcStart + arcLength);
-                        ctx.stroke();
-                    }
-
-                    ctx.beginPath();
-                    ctx.fillStyle = `rgba(${item.color},${item.alpha})`;
-                    ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-
-                ctx.restore();
+                if (batchTextDots) {
+                    ctx.fillStyle = 'rgba(238,246,255,0.82)';
+                    ctx.fill(titleDotPath);
+                    ctx.fillStyle = 'rgba(140,202,255,0.78)';
+                    ctx.fill(subtitleDotPath);
+                }
+                if (useBootWebgl) {
+                    flushBootWebglParticles(webglParticleCount);
+                } else {
+                    ctx.restore();
+                }
                 requestAnimationFrame(drawBootPreview);
             }
 
@@ -777,15 +1665,6 @@
             window.__setBootPreviewBoardProgress = function (index, progress) {
                 if (!running) return;
                 setBootBoardProgress(index, progress);
-                let activeCount = 0;
-                let progressSum = 0;
-                for (let i = 0; i < boardTargetProgress.length; i++) {
-                    const value = boardTargetProgress[i];
-                    if (value === undefined) continue;
-                    activeCount++;
-                    progressSum += value;
-                }
-                if (activeCount > 0) setBootBuildProgress(progressSum / activeCount);
             };
 
             resizeBootPreview();
@@ -831,13 +1710,8 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
             window.__projectBootLightStagePoint = function (point) {
-                if (!camera) return null;
-                _bootProjectionPoint.set(point[0], point[1], point[2]).project(camera);
-                return {
-                    x: (_bootProjectionPoint.x * 0.5 + 0.5) * window.innerWidth,
-                    y: (-_bootProjectionPoint.y * 0.5 + 0.5) * window.innerHeight,
-                    depth: THREE.MathUtils.clamp((_bootProjectionPoint.z + 1) * 0.5, 0, 1),
-                };
+                const projected = projectBootLightStagePointToScreen(point[0], point[1], point[2]);
+                return projected ? { x: projected[0], y: projected[1], depth: projected[2] } : null;
             };
 
             labelRenderer = new CSS2DRenderer();
@@ -1590,6 +2464,9 @@
             args.lightstage.patterns.hdriPattern = targetPattern;
             args.lightstage.patterns.autoplay = false;
             args.lightstage.patterns.last_update = new Date().getTime();
+            if (!customHdriCache[targetPattern]) {
+                loadDefaultCustomImages();
+            }
 
             hdriDirty = true;
             hdriPreviewDirty = true;
@@ -1856,8 +2733,13 @@
                 }
                 if (lightboard.userData.revealProgress < 1) allRevealed = false;
             });
-            if (hasReveal) publishBootLedTargetsFromLightboards();
-            if (hasReveal && allRevealed && !lightStageBuildInProgress && !lightStageRevealCompleteNotified) {
+            const readyToFinishBoot = !lightStageBuildInProgress && !lightStageRevealCompleteNotified && isColdStartWarmupReady();
+            if (hasReveal && allRevealed && readyToFinishBoot) {
+                lightStageRevealCompleteNotified = true;
+                if (typeof window.__finishBootPreview === 'function') {
+                    window.__finishBootPreview();
+                }
+            } else if (!hasReveal && lightboards.children.length > 0 && readyToFinishBoot) {
                 lightStageRevealCompleteNotified = true;
                 if (typeof window.__finishBootPreview === 'function') {
                     window.__finishBootPreview();
@@ -2147,6 +3029,7 @@
                 lightStageTargetBoardCount = 0;
                 rebuildLightboardRefs();
                 markHdriOlatProgramWarmupDirty();
+                scheduleInitialHdriAssignmentPrecompute();
 
                 if (reset && typeof setupIlluminationPreview === 'function') {
                     setupIlluminationPreview();
@@ -2182,7 +3065,8 @@
                         const sourceIndex = buildOrder[index++];
                         addLightboard(positions[sourceIndex], sourceIndex);
                         const hasIdleTime = deadline && typeof deadline.timeRemaining === 'function' && deadline.timeRemaining() > 3;
-                        if (!hasIdleTime && performance.now() - start > 5) break;
+                        const elapsedMs = performance.now() - start;
+                        if (elapsedMs > 4 || (!hasIdleTime && elapsedMs > 2)) break;
                     }
 
                     if (typeof window.__setBootPreviewBuildProgress === 'function') {
@@ -2310,7 +3194,7 @@
             scene.add(helper);
         }
 
-        function scheduleBvhBuildForMesh(targetMesh, delayMs=6500) {
+        function scheduleBvhBuildForMesh(targetMesh, delayMs=2200) {
             if (!targetMesh || !targetMesh.geometry || !args.render.rayCaster.useBVH) return;
             const token = ++bvhBuildToken;
             bvhBuildScheduled = true;
@@ -2385,15 +3269,18 @@
             disposeBvhHelper();
             scheduleBvhBuildForMesh(mesh);
 
-            // recreate camera views now that we know the object target
-            if (typeof createCameraViews === 'function') {
-                createCameraViews();
-                selectCamera(selectedCameraIndex);
-            }
+            runWhenBootPreviewInactive(() => {
+                if (newMesh !== mesh) return;
+                // recreate camera views now that we know the object target
+                if (typeof createCameraViews === 'function') {
+                    createCameraViews();
+                    selectCamera(selectedCameraIndex);
+                }
 
-            setupBrdfPreview();
-            updateMeshPreviewRig(mesh);
-            meshPreviewRefDist = 0;
+                setupBrdfPreview();
+                updateMeshPreviewRig(mesh);
+                meshPreviewRefDist = 0;
+            }, 400);
 
             applyObjectMaterial();
         }
@@ -2971,6 +3858,15 @@
             return hdriOlatProgramWarmupDone || !canWarmupHdriOlatPrograms();
         }
 
+        function isColdStartWarmupReady() {
+            return !!(
+                startupSceneReady
+                && !isModelLoading
+                && hiddenMainWarmupComplete
+                && hdriOlatProgramWarmupReady()
+            );
+        }
+
         function setPhysicalLightVisible(ledLight, visible, bulk=false) {
             if (!ledLight) return;
             ledLight.visible = !!visible && (!bulk || canUseBulkPointLights());
@@ -3334,6 +4230,25 @@
             );
         }
 
+        function scheduleDefaultCustomImagesLoad() {
+            const bootStillActive = () => (
+                typeof window.__isBootPreviewActive === 'function'
+                && window.__isBootPreviewActive()
+            );
+            const startWhenQuiet = () => {
+                if (bootStillActive() || document.visibilityState !== 'hidden') {
+                    window.setTimeout(startWhenQuiet, 5000);
+                    return;
+                }
+                loadDefaultCustomImages();
+            };
+            if ('requestIdleCallback' in window) {
+                window.requestIdleCallback(() => window.setTimeout(startWhenQuiet, 5000), { timeout: 15000 });
+            } else {
+                window.setTimeout(startWhenQuiet, 10000);
+            }
+        }
+
         function buildHdriAssignmentMap(width, height) {
             if (!lightboards || lightboards.children.length === 0) return;
             const lightDirs = lightboards.children.map(lb => lb.position.clone().normalize());
@@ -3364,6 +4279,26 @@
             hdriAssignmentWidth = width;
             hdriAssignmentHeight = height;
             hdriAssignmentDirty = false;
+        }
+
+        function scheduleInitialHdriAssignmentPrecompute(delayMs=250) {
+            if (!lightboards || !lightboards.children || lightboards.children.length === 0) return;
+            const patterns = args.lightstage.patterns;
+            const pattern = patterns.hdriPattern || 'gradient';
+            const isCustom = pattern === 'custom1' || pattern === 'custom2';
+            const width = isCustom ? 512 : (patterns.hdriResolution || 128);
+            const height = isCustom ? 256 : Math.floor(width / 2);
+            if (!hdriAssignmentDirty && hdriAssignmentWidth === width && hdriAssignmentHeight === height) return;
+            const run = () => {
+                if (!lightboards || !lightboards.children || lightboards.children.length === 0) return;
+                if (!hdriAssignmentDirty && hdriAssignmentWidth === width && hdriAssignmentHeight === height) return;
+                buildHdriAssignmentMap(width, height);
+            };
+            if ('requestIdleCallback' in window) {
+                window.requestIdleCallback(() => window.setTimeout(run, delayMs), { timeout: 1200 });
+            } else {
+                window.setTimeout(run, delayMs);
+            }
         }
 
         function buildHdriBaseColors(width, height) {
@@ -3981,6 +4916,7 @@
         function updateRays() {
 
             if ( ! mesh ) return;
+            if (args.render.rayCaster.useBVH && (!mesh.geometry || !mesh.geometry.boundsTree)) return;
 
             _raycaster.firstHitOnly = args.render.rayCaster.firstHitOnly;
             const rayCount = args.render.rayCaster.rays.count;
@@ -4062,12 +4998,26 @@
                 lightboardRefs.push({ lightboard, ledsAttr, ledsInit, ledLight });
             });
             lightboardRefsVersion++;
-            publishBootLedTargetsFromLightboards();
+            const canStreamBootTargets = typeof window.__setBootPreviewLedTargets === 'function';
+            if (canStreamBootTargets || typeof window.__isBootPreviewActive !== 'function' || !window.__isBootPreviewActive()) {
+                publishBootLedTargetsFromLightboards();
+            }
+        }
+
+        function projectBootLightStagePointToScreen(x, y, z) {
+            if (!camera) return null;
+            _bootProjectionPoint.set(x, y, z).project(camera);
+            return [
+                (_bootProjectionPoint.x * 0.5 + 0.5) * window.innerWidth,
+                (-_bootProjectionPoint.y * 0.5 + 0.5) * window.innerHeight,
+                THREE.MathUtils.clamp((_bootProjectionPoint.z + 1) * 0.5, 0, 1),
+            ];
         }
 
         function publishBootLedTargetsFromLightboards() {
             if (!lightboards || !lightboards.children || lightboards.children.length === 0) return;
             const targets = [];
+            const projectedTargets = [];
             const boards = lightboards.children
                 .slice()
                 .sort((a, b) => (a.userData.stageIndex || 0) - (b.userData.stageIndex || 0));
@@ -4076,24 +5026,55 @@
                 const localPositions = ledData && ledData.positions;
                 if (!localPositions || !localPositions.length) return;
                 lightboard.updateMatrixWorld(true);
+                lightboard.getWorldPosition(_bootLedTargetWorldPosition);
+                lightboard.getWorldQuaternion(_bootLedTargetWorldQuaternion);
                 for (let i = 0; i < localPositions.length; i += 3) {
                     _bootLedTargetPoint
                         .set(localPositions[i], localPositions[i + 1], localPositions[i + 2])
-                        .applyMatrix4(lightboard.matrixWorld);
+                        .applyQuaternion(_bootLedTargetWorldQuaternion)
+                        .add(_bootLedTargetWorldPosition);
                     targets.push([
                         _bootLedTargetPoint.x,
                         _bootLedTargetPoint.y,
                         _bootLedTargetPoint.z,
                     ]);
+                    const projected = projectBootLightStagePointToScreen(
+                        _bootLedTargetPoint.x,
+                        _bootLedTargetPoint.y,
+                        _bootLedTargetPoint.z
+                    );
+                    if (projected) projectedTargets.push(projected);
                 }
             });
             if (targets.length) {
                 window.__BOOT_LIGHTSTAGE_LED_TARGETS__ = targets;
+                if (projectedTargets.length === targets.length) {
+                    window.__BOOT_LIGHTSTAGE_PROJECTED_TARGETS__ = projectedTargets;
+                    window.__BOOT_LIGHTSTAGE_PROJECTED_TARGETS_META__ = {
+                        width: window.innerWidth,
+                        height: window.innerHeight,
+                    };
+                }
+                if (typeof window.__setBootPreviewLedTargets === 'function') {
+                    window.__setBootPreviewLedTargets(
+                        targets,
+                        projectedTargets.length === targets.length ? projectedTargets : null,
+                        projectedTargets.length === targets.length ? window.__BOOT_LIGHTSTAGE_PROJECTED_TARGETS_META__ : null
+                    );
+                }
             }
         }
 
         function getAutoFps(scale = 1) {
             return Math.max(0.1, (args.lightstage.patterns.fps || 1) * scale);
+        }
+
+        function getOlatStepCounts() {
+            const fps = Math.max(1, Math.round(args.lightstage.patterns.fps || 1));
+            return {
+                n_all_white: fps,
+                n_all_off: Math.max(1, Math.round(fps / 2)),
+            };
         }
 
         function handleHdriAutoplay(curr, trackAllPhase) {
@@ -4131,7 +5112,7 @@
             if (olatAutoplay && patterns.olatPausedApplied) {
                 patterns.olatPausedApplied = false;
             }
-            const olatInterval = 1000 / Math.max(1, patterns.fps || 1);
+            const olatInterval = 1000 / Math.max(1, Math.round(patterns.fps || 1));
             const shouldStep = olatAutoplay
                 ? (curr - patterns.last_update > olatInterval)
                 : (!patterns.olatPausedApplied);
@@ -4157,8 +5138,7 @@
                 olatPreviewDirty = true;
                 markIlluminationLightsDirty();
 
-                let n_all_white = patterns.fps; // 1 second all white
-                let n_all_off = patterns.fps / 2; // 0.5 second all off
+                const { n_all_white, n_all_off } = getOlatStepCounts(); // all-white, then all-off prelude
                 lightboardRefs.forEach((ref, i) => {
                     let leds = ref.ledsAttr;
                     let leds_init = ref.ledsInit;
@@ -4459,6 +5439,18 @@
             return typeof window.__isBootPreviewActive === 'function' && window.__isBootPreviewActive();
         }
 
+        function runWhenBootPreviewInactive(callback, delayMs=0) {
+            const run = () => {
+                if (isBootPreviewActive()) {
+                    window.setTimeout(run, 250);
+                    return;
+                }
+                if (delayMs > 0) window.setTimeout(callback, delayMs);
+                else callback();
+            };
+            run();
+        }
+
         function isCompactMobileLayout() {
             const width = window.innerWidth || 1;
             const height = window.innerHeight || 1;
@@ -4467,19 +5459,20 @@
 
         function applyResponsiveOverlayState() {
             const compactMobileLayout = isCompactMobileLayout();
+            const bootPreviewActive = isBootPreviewActive();
             document.body.classList.toggle('compact-mobile-layout', compactMobileLayout);
             if (stats && stats.dom) {
-                stats.dom.style.display = compactMobileLayout ? 'none' : 'block';
+                stats.dom.style.display = (compactMobileLayout || bootPreviewActive) ? 'none' : 'block';
             }
             if (gui && gui.domElement) {
-                gui.domElement.style.display = compactMobileLayout ? 'none' : '';
+                gui.domElement.style.display = (compactMobileLayout || bootPreviewActive) ? 'none' : '';
             }
             return compactMobileLayout;
         }
 
         function updateOrbitAutoRotateState() {
             if (!controls) return;
-            controls.autoRotate = !!(args.controls.autoRotate && !isBootPreviewActive());
+            controls.autoRotate = !!(args.controls.autoRotate && !isBootPreviewActive() && !mainCameraTween);
         }
 
         function setupOrbitControls() {
@@ -4491,23 +5484,71 @@
         }
 
         // Animation loop
+        let postBootResumeFrames = 0;
         function animate() {
             const compactMobileLayout = applyResponsiveOverlayState();
-            render(compactMobileLayout);
-            if (!compactMobileLayout && stats) stats.update();
+            const bootPreviewActive = isBootPreviewActive();
+            const cameraTweenActive = !bootPreviewActive && updateMainCameraTween(performance.now());
+            postBootResumeFrames = bootPreviewActive ? 0 : postBootResumeFrames + 1;
+            render(compactMobileLayout, bootPreviewActive, postBootResumeFrames);
+            if (!compactMobileLayout && !bootPreviewActive && postBootResumeFrames > 12 && stats) stats.update();
             updateOrbitAutoRotateState();
-            controls.update();
+            if (!bootPreviewActive && !cameraTweenActive) controls.update();
         }
 
-        function render(compactMobileLayout) {
+        function runHiddenMainSceneWarmup() {
+            if (hiddenMainWarmupComplete) return;
+            if (!startupSceneReady || isModelLoading || lightStageBuildInProgress) return;
+            if (!renderer || !scene || !camera || !mesh || !lightboards) return;
+
+            if (!lightStageBuildInProgress) {
+                updatePattern();
+                syncIlluminationLights();
+            }
+
+            renderer.setClearColor(0x000000, 1);
+            renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+            renderer.render(scene, camera);
+            if (labelRenderer) {
+                labelRenderer.render(scene, camera);
+            }
+            if (layoutPreviewScene && layoutPreviewCamera) {
+                renderOverlaySceneWithMainRenderer(layoutPreviewScene, layoutPreviewCamera, 0, 0, 64, 64);
+            }
+            if (meshPreviewScene && meshPreviewCamera && meshPreviewRig) {
+                renderOverlaySceneWithMainRenderer(meshPreviewScene, meshPreviewCamera, 0, 70, 64, 64);
+            }
+            if (illuminationSceneGrey && illuminationCameraGrey) {
+                renderOverlaySceneWithMainRenderer(illuminationSceneGrey, illuminationCameraGrey, 70, 0, 64, 64);
+            }
+            if (illuminationSceneChrome && illuminationCameraChrome) {
+                renderOverlaySceneWithMainRenderer(illuminationSceneChrome, illuminationCameraChrome, 70, 70, 64, 64);
+            }
+            hiddenMainWarmupFrames++;
+            if (hiddenMainWarmupFrames >= 8) {
+                hiddenMainWarmupComplete = true;
+            }
+        }
+
+        function render(compactMobileLayout, bootPreviewActive, resumeFrames) {
             if (compactMobileLayout === undefined) compactMobileLayout = isCompactMobileLayout();
+            if (bootPreviewActive === undefined) bootPreviewActive = isBootPreviewActive();
+            if (resumeFrames === undefined) resumeFrames = postBootResumeFrames;
 
             // main scene
             requestAnimationFrame(animate);
+            if (bootPreviewActive) {
+                updateLightStageReveal();
+                runHiddenMainSceneWarmup();
+                return;
+            }
+            const heavyOverlayWorkReady = resumeFrames > 12;
             renderer.setClearColor( 0x000000, 1 );
             renderer.setViewport( 0, 0, window.innerWidth, window.innerHeight );
             renderer.render(scene, camera);
-            labelRenderer.render( scene, camera );
+            if (!bootPreviewActive) {
+                labelRenderer.render( scene, camera );
+            }
 
             // updates
             if (rig) {
@@ -4537,7 +5578,7 @@
                 mesh.updateMatrixWorld();
             }
 
-            if (sphereInstance) {
+            if (sphereInstance && heavyOverlayWorkReady) {
                 updateRays();
             }
 
@@ -4549,7 +5590,7 @@
 
             // inset scene
             // debugger;
-            const showCameraInset = args.render.sideRender.show && !compactMobileLayout;
+            const showCameraInset = args.render.sideRender.show && !compactMobileLayout && heavyOverlayWorkReady;
             if (showCameraInset) {
                 if (cameraInsetLabel) cameraInsetLabel.style.display = 'block';
                 renderer.setClearColor( 0x000000, 2 );
@@ -4566,7 +5607,7 @@
             }
 
             // illumination preview inside the inset (lower-left corner)
-            if (args.render.sideRender.showIllumination && illuminationCameraGrey && illuminationCameraChrome) {
+            if (heavyOverlayWorkReady && args.render.sideRender.showIllumination && illuminationCameraGrey && illuminationCameraChrome) {
                 const baseCamera = (args.render.sideRender.illuminationView === 'overall') ? camera : cameraObject;
                 if (baseCamera) {
                     _illuminationPos.set(0, 0, 0);
@@ -5275,8 +6316,7 @@
             if (!lightboards || !lightboards.children || lightboards.children.length === 0) {
                 return { mode: 'off', boardIndex: -1 };
             }
-            const n_all_white = args.lightstage.patterns.fps;
-            const n_all_off = args.lightstage.patterns.fps / 2;
+            const { n_all_white, n_all_off } = getOlatStepCounts();
             const total = lightboards.children.length + (n_all_white + n_all_off);
             const idx = ((args.lightstage.patterns.idx % total) + total) % total;
 
@@ -5547,8 +6587,11 @@
             if (overlayOlatMarker) {
                 if (isOlatPhase && lightboards && lightboards.children && lightboards.children.length > 0) {
                     const { mode, boardIndex } = getOlatPhaseInfo();
-                    if (mode === 'olat' && boardIndex >= 0 && boardIndex < lightboards.children.length) {
-                        const dir = lightboards.children[boardIndex].position.clone().normalize();
+                    const markerBoard = (mode === 'olat' && boardIndex >= 0 && boardIndex < lightboards.children.length)
+                        ? lightboards.children[boardIndex]
+                        : null;
+                    if (markerBoard && markerBoard.position) {
+                        const dir = markerBoard.position.clone().normalize();
                         const theta = Math.acos(THREE.MathUtils.clamp(dir.y, -1, 1));
                         let phi = Math.atan2(dir.z, dir.x);
                         if (phi < 0) phi += Math.PI * 2;
@@ -5650,12 +6693,16 @@
         // point that cameras should look at (object center). default origin until object loads
         let objectTarget = new THREE.Vector3(0,0,0);
         let controls;
+        let mainCameraTween = null;
         let saveRenderer;
         let mesh, helper, bvh;
         let bvhBuildToken = 0;
         let bvhBuildScheduled = false;
         let bvhBuildRunning = false;
         let modelLoadToken = 0;
+        let startupSceneReady = false;
+        let hiddenMainWarmupFrames = 0;
+        let hiddenMainWarmupComplete = false;
         let sphereInstance, lineSegments, sphereLabels;
         let insetWidth, insetHeight;
 
@@ -5672,6 +6719,8 @@
         const _illuminationLightPos = new THREE.Vector3();
         const _bootProjectionPoint = new THREE.Vector3();
         const _bootLedTargetPoint = new THREE.Vector3();
+        const _bootLedTargetWorldPosition = new THREE.Vector3();
+        const _bootLedTargetWorldQuaternion = new THREE.Quaternion();
         const _olatColor = new THREE.Color();
         const _whiteColor = new THREE.Color();
         const _warmupColor = new THREE.Color();
@@ -6170,21 +7219,69 @@
         args.projects.papercopilot = function(){window.open('https://papercopilot.com');};
         window.__getLightStageCacheSnapshot = getLightStageCacheSnapshot;
 
-        // Setup light stage
-        init();
-        setupGUI();
-        // initialize info title visibility according to args
-        const infoDiv = document.getElementById('info');
-        if (infoDiv) infoDiv.style.display = args.projects.showTitle ? 'block' : 'none';
-        setupStats();
-        loadObject(args.lightstage.object.type);
-        const lightStageCacheReady = window.__LIGHTSTAGE_LAYOUT_CACHE_READY__;
-        if (lightStageCacheReady && typeof lightStageCacheReady.then === 'function') {
-            await lightStageCacheReady;
+        function waitForStartupFrame() {
+            return new Promise((resolve) => requestAnimationFrame(() => window.setTimeout(resolve, 0)));
         }
-        setupLightStage(false, { asyncBuild: true });
-        setupRayCaster();
-        setupIlluminationPreview();
+
+        function waitForStartupIdle(timeout=900) {
+            return new Promise((resolve) => {
+                if ('requestIdleCallback' in window) {
+                    window.requestIdleCallback(resolve, { timeout });
+                } else {
+                    window.setTimeout(resolve, 0);
+                }
+            });
+        }
+
+        function waitForStartupDelay(delayMs) {
+            return new Promise((resolve) => window.setTimeout(resolve, delayMs));
+        }
+
+        async function runStartupStep(callback, idleTimeout=900) {
+            await waitForStartupFrame();
+            await waitForStartupIdle(idleTimeout);
+            callback();
+        }
+
+        async function startMainSceneProgressively() {
+            await runStartupStep(() => {
+                setupGUI();
+                const infoDiv = document.getElementById('info');
+                if (infoDiv) infoDiv.style.display = args.projects.showTitle ? 'block' : 'none';
+                setupStats();
+            }, 500);
+
+            await runStartupStep(() => {
+                loadObject(args.lightstage.object.type);
+            }, 700);
+
+            const lightStageCacheReady = window.__LIGHTSTAGE_LAYOUT_CACHE_READY__;
+            if (lightStageCacheReady && typeof lightStageCacheReady.then === 'function') {
+                await Promise.race([lightStageCacheReady, waitForStartupDelay(2600)]);
+            }
+
+            await runStartupStep(() => {
+                setupLightStage(false, { asyncBuild: true });
+            }, 700);
+
+            await runStartupStep(() => {
+                setupRayCaster();
+            }, 700);
+
+            await runStartupStep(() => {
+                setupIlluminationPreview();
+            }, 700);
+
+            await runStartupStep(() => {
+                createCameraViews();
+                selectCamera(selectedCameraIndex);
+                scheduleDefaultCustomImagesLoad();
+                startupSceneReady = true;
+            }, 900);
+        }
+
+        // Setup the minimal renderer first; the rest is staged so the boot art keeps moving.
+        init();
         setupOrbitControls();
         updateLabelMask();
 
@@ -6313,6 +7410,273 @@
             });
         }
 
+        function updateDemoGuiDisplays() {
+            [
+                window.patternsActiveCtrl,
+                window.patternsAutoplayCtrl,
+                window.hdriPatternCtrl,
+                window.hdriIntensityCtrl,
+                window.hdriLightIntensityCtrl,
+                window.hdriOlatLightBudgetCtrl,
+                window.hdriContrastCtrl,
+                window.hdriHorizontalRotationCtrl,
+                window.hdriVerticalRotationCtrl,
+            ].forEach((ctrl) => {
+                if (ctrl && typeof ctrl.updateDisplay === 'function') ctrl.updateDisplay();
+            });
+        }
+
+        function configureDemoPattern(active, options={}) {
+            const patterns = args.lightstage.patterns;
+            patterns.active = active || patterns.active;
+            patterns.idx = 0;
+            patterns.last_update = new Date().getTime();
+            patterns.autoplay = options.autoplay !== undefined ? !!options.autoplay : patterns.autoplay;
+            if (options.idx !== undefined) patterns.idx = Math.max(0, Math.round(options.idx || 0));
+            if (options.fps !== undefined) patterns.fps = options.fps;
+            if (options.olatColor !== undefined) patterns.olatColor = options.olatColor;
+            if (options.olatIntensity !== undefined) patterns.olatIntensity = options.olatIntensity;
+            if (options.hdriPattern) patterns.hdriPattern = options.hdriPattern;
+            if (options.hdriIntensity !== undefined) patterns.hdriIntensity = options.hdriIntensity;
+            if (options.hdriLightIntensity !== undefined) patterns.hdriLightIntensity = options.hdriLightIntensity;
+            if (options.hdriOlatLightBudget !== undefined) patterns.hdriOlatLightBudget = options.hdriOlatLightBudget;
+            if (options.hdriContrast !== undefined) patterns.hdriContrast = options.hdriContrast;
+            if (options.hdriHorizontalRotation !== undefined) patterns.hdriHorizontalRotation = options.hdriHorizontalRotation;
+            if (options.hdriVerticalRotation !== undefined) patterns.hdriVerticalRotation = options.hdriVerticalRotation;
+            if (options.brdfView) patterns.brdfView = options.brdfView;
+
+            if (patterns.active === 'all') {
+                allPhase = 'warmup';
+                allWarmupStart = 0;
+                allHdriSteps = 0;
+                allBrdfSteps = 0;
+            }
+            if (patterns.active === 'hdri' || patterns.active === 'hdri_envmap' || patterns.active === 'all') {
+                hdriDirty = true;
+                hdriLastUpdate = 0;
+                if (patterns.active === 'hdri') clearHDRIEnvMap();
+            }
+            if (patterns.active === 'olat') {
+                patterns.olatPausedApplied = false;
+                clearNonOlatLighting();
+            }
+            if (patterns.active === 'brdf') {
+                brdfPreviewDirty = true;
+            }
+
+            markPatternPreviewDirty();
+            markIlluminationLightsDirty();
+            updateDemoGuiDisplays();
+            return window.__cvpr26Demo.getState();
+        }
+
+        function configureDemoMaterial(preset) {
+            if (!preset) return window.__cvpr26Demo.getState();
+            args.lightstage.object.material.preset = preset;
+            if (preset === 'textures') {
+                args.lightstage.object.material.useImportedTextures = true;
+            } else {
+                args.lightstage.object.material.useImportedTextures = false;
+                Object.assign(args.lightstage.object.material.brdf, getMaterialPresetValues(preset));
+            }
+            applyObjectMaterial();
+            brdfPreviewDirty = true;
+            return window.__cvpr26Demo.getState();
+        }
+
+        function applyMainCameraFromView(index) {
+            const targetIndex = Math.max(0, Math.min(cameraViews.length - 1, Math.round(index || 0)));
+            if (!cameraViews.length || !camera) return window.__cvpr26Demo.getState();
+            mainCameraTween = null;
+            selectCamera(targetIndex);
+            const src = cameraViews[targetIndex];
+            camera.position.copy(src.position);
+            camera.quaternion.copy(src.quaternion);
+            camera.fov = src.fov;
+            camera.near = src.near;
+            camera.far = Math.max(src.far, args.render.camera.cameraFar || camera.far);
+            camera.updateProjectionMatrix();
+            if (controls) {
+                controls.target.copy(objectTarget);
+                controls.update();
+            }
+            return window.__cvpr26Demo.getState();
+        }
+
+        function beginMainCameraTransition(index, options={}) {
+            const targetIndex = Math.max(0, Math.min(cameraViews.length - 1, Math.round(index || 0)));
+            if (!cameraViews.length || !camera) return window.__cvpr26Demo.getState();
+            selectCamera(targetIndex);
+            const src = cameraViews[targetIndex];
+            const endPosition = src.position.clone();
+            if (Number.isFinite(options.distance)) {
+                const endDirection = endPosition.clone().sub(objectTarget).normalize();
+                endPosition.copy(objectTarget).add(endDirection.multiplyScalar(Math.max(0.001, options.distance)));
+            }
+            mainCameraTween = {
+                startTime: performance.now(),
+                durationMs: Math.max(120, Math.round(options.durationMs || 1600)),
+                startPosition: camera.position.clone(),
+                endPosition,
+                startQuaternion: camera.quaternion.clone(),
+                endQuaternion: src.quaternion.clone(),
+                startFov: camera.fov,
+                endFov: Number.isFinite(options.fov) ? options.fov : src.fov,
+                startNear: camera.near,
+                endNear: src.near,
+                startFar: camera.far,
+                endFar: Math.max(src.far, args.render.camera.cameraFar || camera.far),
+                target: objectTarget.clone(),
+            };
+            const startOffset = mainCameraTween.startPosition.clone().sub(mainCameraTween.target);
+            const endOffset = mainCameraTween.endPosition.clone().sub(mainCameraTween.target);
+            mainCameraTween.startRadius = Math.max(0.001, startOffset.length());
+            mainCameraTween.endRadius = Math.max(0.001, endOffset.length());
+            mainCameraTween.startDirection = startOffset.normalize();
+            mainCameraTween.endDirection = endOffset.normalize();
+            mainCameraTween.directionQuaternion = new THREE.Quaternion()
+                .setFromUnitVectors(mainCameraTween.startDirection, mainCameraTween.endDirection);
+            if (controls) controls.autoRotate = false;
+            return window.__cvpr26Demo.getState();
+        }
+
+        function applyMainCameraPose(options={}) {
+            if (!camera) return window.__cvpr26Demo.getState();
+            const position = Array.isArray(options.position) ? options.position : null;
+            if (!position || position.length < 3) return window.__cvpr26Demo.getState();
+            const targetArray = Array.isArray(options.target) ? options.target : null;
+            const target = targetArray && targetArray.length >= 3
+                ? new THREE.Vector3(targetArray[0], targetArray[1], targetArray[2])
+                : objectTarget.clone();
+            mainCameraTween = null;
+            camera.position.set(position[0], position[1], position[2]);
+            camera.lookAt(target);
+            if (Number.isFinite(options.fov)) camera.fov = options.fov;
+            if (Number.isFinite(options.near)) camera.near = options.near;
+            if (Number.isFinite(options.far)) camera.far = options.far;
+            else camera.far = Math.max(camera.far, args.render.camera.cameraFar || camera.far);
+            camera.updateProjectionMatrix();
+            if (controls) {
+                controls.target.copy(target);
+                controls.autoRotate = false;
+            }
+            return window.__cvpr26Demo.getState();
+        }
+
+        function configureDemoOlatFrame(index, options={}) {
+            const patterns = args.lightstage.patterns;
+            if (patterns.active !== 'olat') {
+                patterns.active = 'olat';
+                clearNonOlatLighting();
+            }
+            patterns.autoplay = false;
+            patterns.idx = Math.max(0, Math.round(index || 0));
+            patterns.last_update = 0;
+            patterns.olatPausedApplied = false;
+            if (options.fps !== undefined) patterns.fps = Math.max(1, Math.round(options.fps || 1));
+            if (options.olatColor !== undefined) patterns.olatColor = options.olatColor;
+            if (options.olatIntensity !== undefined) patterns.olatIntensity = options.olatIntensity;
+            if (options.hdriPattern) patterns.hdriPattern = options.hdriPattern;
+            markPatternPreviewDirty();
+            markIlluminationLightsDirty();
+            updateDemoGuiDisplays();
+            return window.__cvpr26Demo.getState();
+        }
+
+        function updateMainCameraTween(now) {
+            if (!mainCameraTween || !camera) return false;
+            const tween = mainCameraTween;
+            const linearT = Math.max(0, Math.min(1, (now - tween.startTime) / tween.durationMs));
+            const easedT = linearT * linearT * (3 - 2 * linearT);
+            const directionQuaternion = new THREE.Quaternion().slerpQuaternions(
+                new THREE.Quaternion(),
+                tween.directionQuaternion,
+                easedT
+            );
+            const direction = tween.startDirection.clone().applyQuaternion(directionQuaternion).normalize();
+            const radiusT = easedT * easedT;
+            const radius = tween.startRadius + (tween.endRadius - tween.startRadius) * radiusT;
+            camera.position.copy(tween.target).add(direction.multiplyScalar(radius));
+            camera.lookAt(tween.target);
+            camera.fov = tween.startFov + (tween.endFov - tween.startFov) * easedT;
+            camera.near = tween.startNear + (tween.endNear - tween.startNear) * easedT;
+            camera.far = tween.startFar + (tween.endFar - tween.startFar) * easedT;
+            camera.updateProjectionMatrix();
+            if (controls) {
+                controls.target.copy(objectTarget);
+            }
+            if (linearT >= 1) {
+                mainCameraTween = null;
+                if (controls) {
+                    controls.target.copy(objectTarget);
+                    controls.update();
+                }
+                return false;
+            }
+            return true;
+        }
+
+        window.__cvpr26Demo = {
+            setPattern: configureDemoPattern,
+            setMaterial: configureDemoMaterial,
+            setObject(type) {
+                if (!type || args.lightstage.object.type === type) return this.getState();
+                args.lightstage.object.type = type;
+                loadObject(type);
+                return this.getState();
+            },
+            setCamera(index) {
+                const targetIndex = Math.max(0, Math.min(cameraViews.length - 1, Math.round(index || 0)));
+                if (cameraViews.length > 0) selectCamera(targetIndex);
+                return this.getState();
+            },
+            setMainCamera: applyMainCameraFromView,
+            transitionMainCamera: beginMainCameraTransition,
+            setMainCameraPose: applyMainCameraPose,
+            setOlatFrame: configureDemoOlatFrame,
+            getProjectedLedTargets() {
+                publishBootLedTargetsFromLightboards();
+                return {
+                    targets: Array.isArray(window.__BOOT_LIGHTSTAGE_LED_TARGETS__) ? window.__BOOT_LIGHTSTAGE_LED_TARGETS__ : [],
+                    projectedTargets: Array.isArray(window.__BOOT_LIGHTSTAGE_PROJECTED_TARGETS__) ? window.__BOOT_LIGHTSTAGE_PROJECTED_TARGETS__ : [],
+                    projectedMeta: window.__BOOT_LIGHTSTAGE_PROJECTED_TARGETS_META__ || null,
+                };
+            },
+            setCameraCount(count) {
+                args.render.camera.cameraCount = Math.max(1, Math.min(20, Math.round(count || args.render.camera.cameraCount || 2)));
+                createCameraViews();
+                selectCamera(Math.min(selectedCameraIndex, cameraViews.length - 1));
+                return this.getState();
+            },
+            setView(options={}) {
+                if (options.autoRotate !== undefined) args.controls.autoRotate = !!options.autoRotate;
+                if (options.autoRotateSpeed !== undefined) args.controls.autoRotateSpeed = options.autoRotateSpeed;
+                if (options.meshAutoRotate !== undefined) args.controls.autoRotate_mesh = !!options.meshAutoRotate;
+                if (options.meshAutoRotateSpeed !== undefined) args.controls.autoRotate_mesh_speed = options.meshAutoRotateSpeed;
+                if (options.showCamera !== undefined) args.render.camera.showCamera = !!options.showCamera;
+                if (options.sideRender !== undefined) args.render.sideRender.show = !!options.sideRender;
+                if (options.illumination !== undefined) args.render.sideRender.showIllumination = !!options.illumination;
+                markCameraHelpersDirty();
+                syncCameraHelperVisibility();
+                updateOrbitAutoRotateState();
+                return this.getState();
+            },
+            getState() {
+                return {
+                    bootActive: isBootPreviewActive(),
+                    pattern: args.lightstage.patterns.active,
+                    allPhase,
+                    hdriPattern: args.lightstage.patterns.hdriPattern,
+                    material: args.lightstage.object.material.preset,
+                    object: args.lightstage.object.type,
+                    cameraIndex: selectedCameraIndex,
+                    cameraCount: cameraViews.length,
+                    modelLoading: isModelLoading,
+                    lightboards: lightboards && lightboards.children ? lightboards.children.length : 0,
+                };
+            },
+        };
+
         // click handler to pick markers
         let isDraggingInset = false;
         let dragStartX = 0, dragStartY = 0;
@@ -6362,11 +7726,13 @@
             }
             
             // Otherwise check for camera marker selection
-            clickRaycaster.setFromCamera(clickMouse, camera);
-            const intersects = clickRaycaster.intersectObjects(cameraMarkers.children, true);
-            if (intersects.length > 0) {
-                const idx = intersects[0].object.userData.idx;
-                selectCamera(idx);
+            if (cameraMarkers && cameraMarkers.children && cameraMarkers.children.length > 0) {
+                clickRaycaster.setFromCamera(clickMouse, camera);
+                const intersects = clickRaycaster.intersectObjects(cameraMarkers.children, true);
+                if (intersects.length > 0) {
+                    const idx = intersects[0].object.userData.idx;
+                    selectCamera(idx);
+                }
             }
         });
         
@@ -6421,18 +7787,13 @@
             if (controls) controls.enabled = true;
         });
 
-        // create initial views
-        createCameraViews();
-        // ensure selected camera copied to inset
-        selectCamera(selectedCameraIndex);
-
-        // Load default custom HDRI images
-        loadDefaultCustomImages();
-
         animate();
 
         window.addEventListener( 'resize', onWindowResize, false );
         onWindowResize();
+        startMainSceneProgressively().catch((error) => {
+            console.error('Startup failed', error);
+        });
     </script>
 </body>
 </html>
