@@ -290,6 +290,7 @@ const reliefFragment = `
   uniform float uTime;
   uniform float uActive;
   uniform float uMotion;
+  uniform float uRelief;
   varying vec2 vUv;
   varying vec2 vSampleUv;
   varying float vLum;
