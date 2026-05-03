@@ -219,6 +219,9 @@ composer.addPass(bloomPass);
 const roomGroup = new THREE.Group();
 const artGroup = new THREE.Group();
 scene.add(roomGroup, artGroup);
+let roomFloor = null;
+let roomFloorMaterial = null;
+let roomMirrorFloor = null;
 
 const activeX = -2.08;
 const surfaceZ = -5.55;
@@ -1099,6 +1102,7 @@ function buildRoom() {
     clearcoatRoughness: 0.055,
     reflectivity: 0.9,
   });
+  roomFloorMaterial = floorMat;
   const wallMatA = new THREE.MeshStandardMaterial({ color: 0x061014, roughness: 0.76, metalness: 0.06 });
   const wallMatB = new THREE.MeshStandardMaterial({ color: 0x020b10, roughness: 0.9, metalness: 0.03 });
   const trimMat = new THREE.MeshBasicMaterial({ color: 0x0f2428 });
@@ -1107,6 +1111,7 @@ function buildRoom() {
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(0, 0, -2.5);
   floor.receiveShadow = true;
+  roomFloor = floor;
   roomGroup.add(floor);
 
   const mirrorBase = Math.min(window.innerWidth, window.innerHeight) * renderer.getPixelRatio();
@@ -1124,10 +1129,12 @@ function buildRoom() {
   const mirrorUpdateEvery = isMobileViewport ? 4 : 3;
   let mirrorFrame = mirrorUpdateEvery - 1;
   mirrorFloor.onBeforeRender = (rendererInstance, renderScene, renderCamera) => {
+    if (!state.effects.reflection) return;
     mirrorFrame = (mirrorFrame + 1) % mirrorUpdateEvery;
     if (mirrorFrame !== 0) return;
     renderMirror(rendererInstance, renderScene, renderCamera);
   };
+  roomMirrorFloor = mirrorFloor;
   roomGroup.add(mirrorFloor);
 
   const backWall = new THREE.Group();
@@ -1583,6 +1590,20 @@ function syncEffectVisibility() {
   aura.visible = state.effects.glow;
   floorGlow.visible = state.effects.glow;
   reflection.visible = state.effects.reflection;
+  if (roomMirrorFloor) {
+    roomMirrorFloor.visible = state.effects.reflection;
+  }
+  if (roomFloor) {
+    roomFloor.receiveShadow = true;
+  }
+  if (roomFloorMaterial) {
+    roomFloorMaterial.roughness = state.effects.reflection ? 0.04 : 0.58;
+    roomFloorMaterial.metalness = state.effects.reflection ? 0.9 : 0.18;
+    roomFloorMaterial.clearcoat = state.effects.reflection ? 1.0 : 0.25;
+    roomFloorMaterial.clearcoatRoughness = state.effects.reflection ? 0.055 : 0.72;
+    roomFloorMaterial.reflectivity = state.effects.reflection ? 0.9 : 0.08;
+    roomFloorMaterial.needsUpdate = true;
+  }
 }
 
 function cutTo(nextShotIndex, nextArtIndex = state.currentIndex) {
