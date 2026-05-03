@@ -820,7 +820,7 @@ function makeFallbackTexture() {
       const rings = Math.sin((warpX * warpX + warpY * warpY) * 58.0 + Math.sin(warpX * 24.0) * 2.2);
       const veins = Math.sin(warpX * 34.0 + Math.cos(warpY * 20.0) * 4.0);
       const ridges = Math.sin((warpX + warpY) * 42.0 + rings * 3.2);
-      const value = Math.max(0, Math.min(255, 150 + rings * 42 + veins * 28 + ridges * 34));
+      const value = Math.max(0, Math.min(255, 205 + rings * 30 + veins * 20 + ridges * 24));
       const index = (y * canvas.width + x) * 4;
       image.data[index] = value * 0.9;
       image.data[index + 1] = value;
@@ -2132,11 +2132,8 @@ window.addEventListener("beforeunload", () => {
   localUrls.forEach((url) => URL.revokeObjectURL(url));
 });
 
-async function init() {
-  const manifestImages = await loadManifestImages();
-  const fallbackImages = DEFAULT_IMAGES.map((item, index) => normalizeImage(item, import.meta.url, index));
-  const queryImages = loadQueryImages();
-  state.items = uniqueImages([...manifestImages, ...fallbackImages, ...queryImages]);
+function startGallery(items) {
+  state.items = uniqueImages(items);
   state.currentIndex = normalizeGalleryIndex(0);
   shotLabel.textContent = shots[state.shotIndex].name;
   updateShotChrome();
@@ -2152,7 +2149,26 @@ async function init() {
   resolveCameraTarget(shots[state.shotIndex], 0, cameraFocusPoint);
   camera.lookAt(cameraFocusPoint);
   renderer.setAnimationLoop(animate);
+}
+
+function mergeManifestImages(manifestImages) {
+  if (!manifestImages.length) return;
+  const existingKeys = new Set(state.items.map((item) => item.id || item.src));
+  const additions = manifestImages.filter((item) => !existingKeys.has(item.id || item.src));
+  if (!additions.length) return;
+  state.items = uniqueImages([...state.items, ...additions]);
+  state.currentIndex = normalizeGalleryIndex(state.currentIndex);
+  renderFilmStrip();
+  hydrateImages(additions);
+}
+
+async function init() {
+  const fallbackImages = DEFAULT_IMAGES.map((item, index) => normalizeImage(item, import.meta.url, index));
+  const queryImages = loadQueryImages();
+  startGallery([...fallbackImages, ...queryImages]);
   hydrateImages(state.items);
+  const manifestImages = await loadManifestImages();
+  mergeManifestImages(manifestImages);
 }
 
 init().catch(reportRuntimeError);
