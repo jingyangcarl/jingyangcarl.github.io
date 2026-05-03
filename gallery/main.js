@@ -305,16 +305,20 @@ const reliefFragment = `
     float heightLight = clamp(0.66 + vHeight * 0.42 + flow * 0.055, 0.16, 1.16);
     float specular = pow(smoothstep(0.54, 1.0, relief) * contour, 2.35);
     float scan = smoothstep(0.06, 0.0, abs(vUv.x - (0.48 + sin(uTime * 0.18) * 0.18))) * relief * uMotion;
+    float effectMix = clamp(max(uRelief * 1.7, uMotion * 0.45), 0.0, 1.0);
 
     vec3 color = source;
-    color *= heightLight;
-    color *= stripes;
-    color += source * pow(relief, 3.0) * (0.035 + uActive * 0.055);
-    color += source * ridge * (0.025 + uActive * 0.04);
-    color += vec3(1.0) * edge * 0.018;
-    color += vec3(1.0) * specular * 0.16;
-    color += vec3(1.0) * scan * 0.032;
+    vec3 shaded = source;
+    shaded *= mix(1.0, max(heightLight, 1.0), effectMix);
+    shaded += source * max(stripes - 1.0, 0.0) * 0.35 * effectMix;
+    shaded += source * pow(relief, 3.0) * (0.02 + uActive * 0.035) * effectMix;
+    shaded += source * ridge * (0.018 + uActive * 0.028) * effectMix;
+    shaded += vec3(1.0) * edge * 0.014 * effectMix;
+    shaded += vec3(1.0) * specular * 0.1 * effectMix;
+    shaded += vec3(1.0) * scan * 0.026 * effectMix;
+    color = mix(source, max(source, shaded), effectMix);
     gl_FragColor = vec4(color, 1.0);
+    #include <colorspace_fragment>
   }
 `;
 
@@ -943,6 +947,7 @@ function makeReliefMaterial(active = 1) {
     vertexShader: reliefVertex,
     fragmentShader: reliefFragment,
     side: THREE.DoubleSide,
+    toneMapped: false,
   });
 }
 
