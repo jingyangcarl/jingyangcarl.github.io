@@ -32,6 +32,10 @@ input[type="range"] {
   accent-color: var(--green);
 }
 
+input[type="checkbox"] {
+  accent-color: var(--green);
+}
+
 button,
 .selectControl {
   min-height: 34px;
@@ -340,6 +344,39 @@ canvas {
   border: 1px solid rgba(238, 248, 245, 0.18);
   border-radius: 8px;
   background: rgba(3, 9, 13, 0.34);
+}
+
+.effectControls {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  padding: 8px 10px 9px;
+  border: 1px solid rgba(238, 248, 245, 0.18);
+  border-radius: 8px;
+  background: rgba(3, 9, 13, 0.34);
+}
+
+.effectControls label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 22px;
+}
+
+.effectControls span {
+  color: rgba(238, 248, 245, 0.7);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.effectControls input {
+  width: 34px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
 }
 
 .cropControls label {

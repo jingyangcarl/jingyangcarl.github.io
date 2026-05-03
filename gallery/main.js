@@ -19,6 +19,12 @@ const cameraSelect = document.getElementById("cameraSelect");
 const viewerSelect = document.getElementById("viewerSelect");
 const displaySelect = document.getElementById("displaySelect");
 const resolutionSelect = document.getElementById("resolutionSelect");
+const effectInputs = {
+  dynamics: document.getElementById("effectDynamics"),
+  displacement: document.getElementById("effectDisplacement"),
+  glow: document.getElementById("effectGlow"),
+  reflection: document.getElementById("effectReflection"),
+};
 const cropControls = document.getElementById("cropControls");
 const cropInputs = {
   x: document.getElementById("cropX"),
@@ -50,6 +56,12 @@ const state = {
   displayMode: "crop",
   resolution: "ultra",
   textureVersion: 0,
+  effects: {
+    dynamics: true,
+    displacement: true,
+    glow: true,
+    reflection: true,
+  },
 };
 
 const localUrls = [];
@@ -1522,6 +1534,13 @@ function updateResolutionControl() {
   if (resolutionSelect) resolutionSelect.value = state.resolution;
 }
 
+function updateEffectControls() {
+  Object.entries(effectInputs).forEach(([key, input]) => {
+    if (!input) return;
+    input.checked = Boolean(state.effects[key]);
+  });
+}
+
 function updateCropControls() {
   const active = activeItem();
   const crop = boundedCrop(active?.crop);
@@ -1558,6 +1577,12 @@ function updateReliefResolution() {
   const previousGeometry = activeSurface.geometry;
   activeSurface.geometry = makeActiveSurfaceGeometry();
   previousGeometry.dispose();
+}
+
+function syncEffectVisibility() {
+  aura.visible = state.effects.glow;
+  floorGlow.visible = state.effects.glow;
+  reflection.visible = state.effects.reflection;
 }
 
 function cutTo(nextShotIndex, nextArtIndex = state.currentIndex) {
@@ -1779,22 +1804,27 @@ function animate() {
     state.cutFlashUntil = 0;
   }
   const cinematicEnergy = state.cinematic ? 1 : 0.35;
-  const reliefPulse = 1 + Math.sin(elapsed * 0.42) * 0.06 * cinematicEnergy;
+  const dynamicsEnergy = state.effects.dynamics ? cinematicEnergy : 0;
+  const dynamicTime = state.effects.dynamics ? elapsed : 0;
+  const displacementEnergy = state.effects.displacement ? 1 : 0;
+  const glowEnergy = state.effects.glow ? 1 : 0;
+  const reflectionEnergy = state.effects.reflection ? 1 : 0;
+  const reliefPulse = 1 + Math.sin(elapsed * 0.42) * 0.06 * dynamicsEnergy;
 
-  activeMaterial.uniforms.uTime.value = elapsed;
-  activeMaterial.uniforms.uRelief.value = 0.44 * reliefPulse;
-  activeMaterial.uniforms.uMotion.value = cinematicEnergy;
-  aura.material.uniforms.uTime.value = elapsed;
-  aura.material.uniforms.uIntensity.value = 0.11 + Math.sin(elapsed * 0.64) * 0.018 * cinematicEnergy;
-  reflection.material.uniforms.uTime.value = elapsed;
-  reflection.material.uniforms.uIntensity.value = 0.7 + Math.sin(elapsed * 0.48) * 0.045 * cinematicEnergy;
+  activeMaterial.uniforms.uTime.value = dynamicTime;
+  activeMaterial.uniforms.uRelief.value = displacementEnergy * 0.44 * reliefPulse;
+  activeMaterial.uniforms.uMotion.value = dynamicsEnergy;
+  aura.material.uniforms.uTime.value = dynamicTime;
+  aura.material.uniforms.uIntensity.value = glowEnergy * (0.11 + Math.sin(elapsed * 0.64) * 0.018 * dynamicsEnergy);
+  reflection.material.uniforms.uTime.value = dynamicTime;
+  reflection.material.uniforms.uIntensity.value = reflectionEnergy * (0.7 + Math.sin(elapsed * 0.48) * 0.045 * dynamicsEnergy);
   viewerReflection.material.uniforms.uTime.value = elapsed;
   viewerReflection.position.z = viewerZ + 0.86 + Math.sin(elapsed * 1.25) * 0.012;
-  floorGlow.material.uniforms.uTime.value = elapsed;
-  floorGlow.material.uniforms.uIntensity.value = 0.045 + Math.sin(elapsed * 0.5) * 0.01 * cinematicEnergy;
-  leftPreview.material.uniforms.uTime.value = elapsed;
-  rightPreview.material.uniforms.uTime.value = elapsed;
-  farPreview.material.uniforms.uTime.value = elapsed;
+  floorGlow.material.uniforms.uTime.value = dynamicTime;
+  floorGlow.material.uniforms.uIntensity.value = glowEnergy * (0.045 + Math.sin(elapsed * 0.5) * 0.01 * dynamicsEnergy);
+  leftPreview.material.uniforms.uTime.value = dynamicTime;
+  rightPreview.material.uniforms.uTime.value = dynamicTime;
+  farPreview.material.uniforms.uTime.value = dynamicTime;
 
   person.position.z = viewerZ + Math.sin(elapsed * 1.25) * 0.012;
   person.rotation.y = (person.userData.baseRotationY || 0) + Math.sin(elapsed * 0.6) * 0.018;
@@ -1811,20 +1841,20 @@ function animate() {
   }
   person.userData.mixer?.update(dt);
   animateHumanThinkingPose(person, elapsed);
-  activeSurface.position.z = surfaceZ + 0.04 + Math.sin(elapsed * 0.55) * 0.018 * cinematicEnergy;
-  activeSurface.rotation.z = Math.sin(elapsed * 0.19) * 0.004 * cinematicEnergy;
-  pulseObjectScale(activeSurface, 1 + Math.sin(elapsed * 0.72) * 0.006 * cinematicEnergy);
-  pulseObjectScale(edgeFrame, 1 + Math.sin(elapsed * 0.72) * 0.004);
+  activeSurface.position.z = surfaceZ + 0.04 + Math.sin(elapsed * 0.55) * 0.018 * dynamicsEnergy;
+  activeSurface.rotation.z = Math.sin(elapsed * 0.19) * 0.004 * dynamicsEnergy;
+  pulseObjectScale(activeSurface, 1 + Math.sin(elapsed * 0.72) * 0.006 * dynamicsEnergy);
+  pulseObjectScale(edgeFrame, 1 + Math.sin(elapsed * 0.72) * 0.004 * dynamicsEnergy);
   edgeFrame.children.forEach((child, index) => {
-    child.material.opacity = child.userData.baseOpacity * (0.82 + Math.sin(elapsed * 1.4 + index) * 0.12);
+    child.material.opacity = child.userData.baseOpacity * (0.82 + Math.sin(elapsed * 1.4 + index) * 0.12 * dynamicsEnergy);
   });
-  slabCore.material.opacity = 0.52 + Math.sin(elapsed * 0.9) * 0.035 * cinematicEnergy;
-  mist.rotation.z = elapsed * 0.012;
-  mist.material.opacity = 0.18 + Math.sin(elapsed * 0.75) * 0.05 * cinematicEnergy;
-  activeLight.position.x = activeX - 0.06 + Math.sin(elapsed * 0.37) * 0.16 * cinematicEnergy;
-  activeLight.position.y = 2.12 + Math.cos(elapsed * 0.31) * 0.08 * cinematicEnergy;
-  activeLight.intensity = 0.85 + Math.sin(elapsed * 1.4) * 0.11 * cinematicEnergy;
-  bloomPass.strength = 0.065 + Math.sin(elapsed * 0.9) * 0.015 * cinematicEnergy;
+  slabCore.material.opacity = 0.52 + Math.sin(elapsed * 0.9) * 0.035 * dynamicsEnergy;
+  mist.rotation.z += dt * 0.012 * state.effects.dynamics;
+  mist.material.opacity = glowEnergy * (0.18 + Math.sin(elapsed * 0.75) * 0.05 * dynamicsEnergy);
+  activeLight.position.x = activeX - 0.06 + Math.sin(elapsed * 0.37) * 0.16 * dynamicsEnergy;
+  activeLight.position.y = 2.12 + Math.cos(elapsed * 0.31) * 0.08 * dynamicsEnergy;
+  activeLight.intensity = glowEnergy ? 0.85 + Math.sin(elapsed * 1.4) * 0.11 * dynamicsEnergy : 0.18;
+  bloomPass.strength = glowEnergy * (0.065 + Math.sin(elapsed * 0.9) * 0.015 * dynamicsEnergy);
 
   if (state.cinematic) animateCamera(now, dt);
   composer.render(dt);
@@ -1859,6 +1889,14 @@ resolutionSelect?.addEventListener("change", () => {
   updateResolutionControl();
   updateReliefResolution();
   hydrateImages(galleryItems());
+});
+
+Object.entries(effectInputs).forEach(([key, input]) => {
+  input?.addEventListener("change", () => {
+    state.effects[key] = input.checked;
+    updateEffectControls();
+    syncEffectVisibility();
+  });
 });
 
 Object.values(cropInputs).forEach((input) => {
@@ -1938,6 +1976,8 @@ async function init() {
   updateShotChrome();
   updateCameraControl();
   updateResolutionControl();
+  updateEffectControls();
+  syncEffectVisibility();
   setSettingsOpen(false);
   renderFilmStrip();
   camera.fov = shots[state.shotIndex].fovFrom || camera.fov;
