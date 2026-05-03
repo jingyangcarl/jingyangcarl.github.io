@@ -53,6 +53,7 @@ const state = {
   cutting: false,
   cutFlashUntil: 0,
   settingsOpen: false,
+  pointerActive: false,
   displayMode: "crop",
   resolution: "ultra",
   textureVersion: 0,
@@ -598,6 +599,8 @@ const floorGlow = new THREE.Mesh(new THREE.PlaneGeometry(surfaceSize * 1.72, sur
 floorGlow.rotation.x = -Math.PI / 2;
 floorGlow.position.set(activeX, 0.058, -3.18);
 
+const sceneCopy = createSceneCopy();
+
 const mist = createMistField();
 mist.position.set(activeX, surfaceY, surfaceZ + 0.22);
 
@@ -608,7 +611,7 @@ leftPreview.group.visible = false;
 rightPreview.group.visible = false;
 farPreview.group.visible = false;
 
-artGroup.add(aura, slabCore, edgeFrame, activeSurface, reflection, floorGlow, mist, leftPreview.group, rightPreview.group, farPreview.group);
+artGroup.add(aura, slabCore, edgeFrame, activeSurface, reflection, floorGlow, sceneCopy, mist, leftPreview.group, rightPreview.group, farPreview.group);
 
 let person = createViewerAnchor();
 scene.add(person);
@@ -906,6 +909,8 @@ function applyActiveArtworkLayout(item) {
   const dimensions = displayDimensionsForItem(item, activeMaxWidth, activeMaxHeight);
   const surfaceScaleX = dimensions.width / surfaceSize;
   const surfaceScaleY = dimensions.height / surfaceSize;
+  const copyWidth = isMobileViewport ? 1.9 : 2.72;
+  const copyHeight = copyWidth / (1200 / 420);
 
   setObjectBaseScale(activeSurface, surfaceScaleX, surfaceScaleY);
   setObjectBaseScale(slabCore, surfaceScaleX, surfaceScaleY);
@@ -914,6 +919,12 @@ function applyActiveArtworkLayout(item) {
   setObjectBaseScale(reflection, surfaceScaleX, Math.max(surfaceScaleY, 0.74));
   setObjectBaseScale(floorGlow, Math.max(surfaceScaleX, 0.74), 1);
   setObjectBaseScale(mist, Math.max(surfaceScaleX, 0.82), Math.max(surfaceScaleY, 0.82));
+  setObjectBaseScale(sceneCopy, copyWidth / 2.72, copyHeight / 0.95);
+  sceneCopy.position.set(
+    activeX + dimensions.width * 0.5 + 0.24 + copyWidth * 0.5,
+    surfaceY - dimensions.height * 0.5 + 0.42 + copyHeight * 0.5,
+    surfaceZ + 0.24
+  );
   return dimensions;
 }
 
@@ -997,6 +1008,123 @@ function makeFloorMaterial() {
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
+}
+
+function createSceneCopy() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 420;
+  const texture = configureTexture(new THREE.CanvasTexture(canvas));
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.72, 0.95), material);
+  mesh.position.set(activeX + 2.05, surfaceY - 1.18, surfaceZ + 0.24);
+  mesh.renderOrder = 7;
+  mesh.visible = false;
+  mesh.userData.copyCanvas = canvas;
+  mesh.userData.copyTexture = texture;
+  renderSceneCopyText(mesh, {
+    title: "Shader Gallery",
+    description: "Images become luminous relief art inside a filmic 3D gallery",
+    author: "Cinematic image stage",
+  });
+  return mesh;
+}
+
+function wrapCanvasText(context, text, maxWidth, maxLines) {
+  const sourceLines = String(text || "").split("\n");
+  const lines = [];
+
+  for (const sourceLine of sourceLines) {
+    const words = sourceLine.split(/\s+/).filter(Boolean);
+    let line = "";
+
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (context.measureText(candidate).width <= maxWidth || !line) {
+        line = candidate;
+      } else {
+        lines.push(line);
+        line = word;
+        if (lines.length >= maxLines) break;
+      }
+    }
+
+    if (line && lines.length < maxLines) lines.push(line);
+    if (lines.length >= maxLines) break;
+  }
+
+  if (lines.length === maxLines && sourceLines.join(" ").length > lines.join(" ").length) {
+    let finalLine = lines[maxLines - 1];
+    while (finalLine.length > 1 && context.measureText(`${finalLine}...`).width > maxWidth) {
+      finalLine = finalLine.slice(0, -1).trimEnd();
+    }
+    lines[maxLines - 1] = `${finalLine}...`;
+  }
+
+  return lines.map((line) => fitCanvasLine(context, line, maxWidth));
+}
+
+function fitCanvasLine(context, text, maxWidth) {
+  if (context.measureText(text).width <= maxWidth) return text;
+  let clipped = text;
+  while (clipped.length > 1 && context.measureText(`${clipped}...`).width > maxWidth) {
+    clipped = clipped.slice(0, -1);
+  }
+  return `${clipped.trimEnd()}...`;
+}
+
+function drawSceneCopyBlock(context, text, x, y, maxWidth, lineHeight, maxLines) {
+  const lines = wrapCanvasText(context, text, maxWidth, maxLines);
+  lines.forEach((line, index) => context.fillText(line, x, y + index * lineHeight));
+  return y + lines.length * lineHeight;
+}
+
+function renderSceneCopyText(mesh, item) {
+  const canvas = mesh.userData.copyCanvas;
+  const texture = mesh.userData.copyTexture;
+  const context = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  const title = item?.title || "Untitled";
+  const description = formatCopyDescription(item?.description);
+  const author = item?.author || "Unknown";
+
+  context.clearRect(0, 0, width, height);
+  context.textBaseline = "top";
+  context.shadowColor = "rgba(90, 255, 222, 0.42)";
+  context.shadowBlur = 18;
+
+  const left = 24;
+  const maxWidth = width - left * 2;
+  let y = 18;
+
+  context.fillStyle = "rgba(246, 251, 250, 0.96)";
+  context.font = '300 68px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
+  y = drawSceneCopyBlock(context, title, left, y, maxWidth, 76, 2) + 20;
+
+  context.shadowBlur = 12;
+  context.fillStyle = "rgba(226, 239, 237, 0.86)";
+  context.font = '300 34px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
+  y = drawSceneCopyBlock(context, description, left, y, maxWidth, 43, 2) + 12;
+
+  context.fillStyle = "rgba(226, 239, 237, 0.78)";
+  context.font = '300 29px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
+  y = drawSceneCopyBlock(context, author, left, y, maxWidth, 38, 1) + 28;
+
+  context.shadowBlur = 0;
+  context.strokeStyle = "rgba(246, 251, 250, 0.28)";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(left, Math.min(height - 34, y));
+  context.lineTo(Math.min(width - left, left + maxWidth * 0.58), Math.min(height - 34, y));
+  context.stroke();
+  texture.needsUpdate = true;
 }
 
 function createSlabEdgeFrame() {
@@ -1457,6 +1585,7 @@ function updateMaterials() {
   if (copyTitle) copyTitle.textContent = active.title || "Untitled";
   if (copyDescription) copyDescription.textContent = formatCopyDescription(active.description);
   if (copyAuthor) copyAuthor.textContent = active.author || "Unknown";
+  renderSceneCopyText(sceneCopy, active);
   const activeDimensions = applyActiveArtworkLayout(active);
   applyItemToMaterial(activeMaterial, active, activeDimensions.aspect);
   applyItemToMaterial(reflection.material, active, activeDimensions.aspect);
@@ -1504,8 +1633,9 @@ function setSettingsOpen(open) {
 }
 
 function setPointerActive(active) {
-  app.classList.toggle("isPointerActive", active);
   if (!active && state.settingsOpen) return;
+  state.pointerActive = active;
+  app.classList.toggle("isPointerActive", active);
 }
 
 function markPointerActive() {
@@ -1535,6 +1665,14 @@ function updatePointerCamera(event) {
 function fadePointerCamera() {
   pointerCamera.insideScene = false;
   pointerCamera.target.set(0, 0);
+}
+
+function animateSceneCopy(dt) {
+  const shouldShow = state.pointerActive && pointerCamera.insideScene;
+  const targetOpacity = shouldShow ? 0.92 : 0;
+  const smoothing = 1 - Math.pow(0.001, dt);
+  sceneCopy.material.opacity += (targetOpacity - sceneCopy.material.opacity) * smoothing;
+  sceneCopy.visible = sceneCopy.material.opacity > 0.01;
 }
 
 function updateDisplayControl() {
@@ -1848,6 +1986,7 @@ function animate() {
   viewerReflection.position.z = viewerZ + 0.86 + Math.sin(elapsed * 1.25) * 0.012;
   floorGlow.material.uniforms.uTime.value = dynamicTime;
   floorGlow.material.uniforms.uIntensity.value = glowEnergy * (0.045 + Math.sin(elapsed * 0.5) * 0.01 * dynamicsEnergy);
+  animateSceneCopy(dt);
   leftPreview.material.uniforms.uTime.value = dynamicTime;
   rightPreview.material.uniforms.uTime.value = dynamicTime;
   farPreview.material.uniforms.uTime.value = dynamicTime;

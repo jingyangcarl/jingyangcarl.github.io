@@ -145,51 +145,7 @@ canvas {
 }
 
 .copyPanel {
-  position: absolute;
-  left: 48.2vw;
-  top: 53.2%;
-  z-index: 6;
-  width: min(49vw, 1120px);
-  color: rgba(246, 251, 250, 0.94);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  pointer-events: none;
-  text-shadow: 0 0 26px rgba(160, 210, 212, 0.16);
-  transform: translateY(-50%);
-  transition:
-    opacity 320ms ease,
-    transform 420ms ease;
-}
-
-.copyPanel.isMuted {
-  opacity: 0;
-  transform: translateY(-46%);
-}
-
-.copyPanel h1 {
-  margin: 0 0 32px;
-  font-size: clamp(48px, 5.8vw, 104px);
-  font-weight: 300;
-  line-height: 0.96;
-  letter-spacing: 0;
-}
-
-.copyPanel p {
-  width: min(100%, 1100px);
-  margin: 0;
-  color: rgba(246, 251, 250, 0.9);
-  font-size: clamp(19px, 2.05vw, 34px);
-  font-weight: 300;
-  line-height: 1.35;
-  letter-spacing: 0;
-  white-space: pre-line;
-}
-
-.copyPanel #copyAuthor {
-  display: inline-block;
-  width: auto;
-  margin-top: 8px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(246, 251, 250, 0.3);
+  display: none;
 }
 
 .hud {
@@ -549,31 +505,6 @@ body.isDragging .dropOverlay {
     bottom: 22px;
     display: flex;
     justify-content: flex-start;
-  }
-
-  .copyPanel {
-    left: 24vw;
-    right: 4vw;
-    top: 48%;
-    bottom: auto;
-    width: auto;
-    transform: translateY(-50%);
-  }
-
-  .copyPanel h1 {
-    margin-bottom: 18px;
-    font-size: clamp(32px, 10vw, 44px);
-  }
-
-  .copyPanel p {
-    width: 100%;
-    font-size: clamp(14px, 3.9vw, 16px);
-    overflow-wrap: normal;
-    word-break: normal;
-  }
-
-  .copyPanel.isMuted {
-    transform: translateY(-46%);
   }
 
   .artLabel {
