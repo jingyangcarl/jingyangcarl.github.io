@@ -81,6 +81,23 @@ canvas {
   display: block;
 }
 
+.stagePoster {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.42;
+  filter: brightness(0.74) contrast(1.08);
+  pointer-events: none;
+  transition: opacity 520ms ease;
+}
+
+#app.isSceneReady .stagePoster {
+  opacity: 0;
+}
+
 .siteHeader {
   position: absolute;
   left: 0;

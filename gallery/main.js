@@ -54,6 +54,7 @@ const state = {
   cutFlashUntil: 0,
   settingsOpen: false,
   pointerActive: false,
+  sceneReady: false,
   displayMode: "crop",
   resolution: "ultra",
   textureVersion: 0,
@@ -1639,6 +1640,12 @@ function setPointerActive(active) {
   app.classList.toggle("isPointerActive", active);
 }
 
+function markSceneReady() {
+  if (state.sceneReady) return;
+  state.sceneReady = true;
+  app.classList.add("isSceneReady");
+}
+
 function markPointerActive() {
   setPointerActive(true);
   window.clearTimeout(pointerIdleTimer);
@@ -1817,6 +1824,7 @@ function hydrateImages(items) {
       if (textureVersion !== state.textureVersion) return;
       updateMaterials();
       renderFilmStrip();
+      if (item === activeItem() && item.loaded) markSceneReady();
     });
   });
 }
@@ -2149,6 +2157,7 @@ function startGallery(items) {
   resolveCameraTarget(shots[state.shotIndex], 0, cameraFocusPoint);
   camera.lookAt(cameraFocusPoint);
   renderer.setAnimationLoop(animate);
+  window.setTimeout(markSceneReady, 4500);
 }
 
 function mergeManifestImages(manifestImages) {
