@@ -34,11 +34,11 @@ All dependencies are loaded via CDN using ES6 `importmap` in HTML files — no `
 **Landing page (`/index.html` + `/static/js/index.js`):**
 WebGL/WebGPU Three.js scene with OrbitControls, CSS2DRenderer for labels, FBXLoader for models, and lil-gui parameter panel. Showcases a 3D Light Stage research visualization.
 
-**Shader Gallery (`/gallery/`):**
-- `main.js` — dual-mode Three.js app: "Museum" mode (FPS navigation via PointerLockControls + WASD) and "Viewer" mode (full-screen shader inspection)
-- `gallery.js` — exports `GALLERY` array; each entry has `{ id, title, author, description, fragmentShader }` — add new artworks here
-- Shaders follow Shadertoy conventions with uniforms: `iTime`, `iResolution`, `iMouse`
-- Fragment shaders are compiled at runtime via Three.js `ShaderMaterial`
+**Gallery (`/gallery/`):**
+- `main.js` — CineShader-style 3D cinema gallery for arbitrary images, with image-driven displaced shader-map surfaces, cinematic camera cuts, and a viewer silhouette
+- `manifest.json` — data-driven image list; add image entries with `{ id, title, author, description, src, thumb, date }`
+- `gallery.js` — exports `IMAGE_MANIFEST_URL` and fallback `DEFAULT_IMAGES`
+- Local files can also be added at runtime with the gallery UI; these are browser-session only
 
 **Research sub-pages** (`/RelightableStudio/`, `/MaterialAuthoring/`, `/PolarizedReflectanceField/`, `/LightSamplingField/`):
 Standalone `index.html` files for individual research projects.
@@ -46,4 +46,4 @@ Standalone `index.html` files for individual research projects.
 **3D assets:** `/static/mesh/` holds GLB and USDZ models. Images are in `/static/img/`.
 
 ### Browser Compatibility
-The gallery uses PointerLock API — test in Chrome or Edge (Firefox has known issues with this flow).
+The gallery is plain DOM/CSS/ES modules and has no build step.

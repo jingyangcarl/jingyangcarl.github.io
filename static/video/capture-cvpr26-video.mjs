@@ -14,12 +14,23 @@ const repoRoot = path.resolve(scriptDir, '../..');
 const width = intEnv('CVPR_VIDEO_WIDTH', 1280);
 const height = intEnv('CVPR_VIDEO_HEIGHT', 720);
 const fps = intEnv('CVPR_ENCODE_FPS', 24);
-const playbackSeconds = numberEnv('CVPR_PLAYBACK_SECONDS', 60);
-const bitrate = intEnv('CVPR_VIDEO_BITRATE', 7_000_000);
+const loopSeconds = numberEnv('CVPR_LOOP_SECONDS', 60);
+const loopCount = intEnv('CVPR_LOOP_COUNT', 6);
+const playbackSeconds = numberEnv('CVPR_PLAYBACK_SECONDS', loopSeconds * loopCount);
+const defaultBitrate = playbackSeconds > 120 ? 3_000_000 : 7_000_000;
+const bitrate = intEnv('CVPR_VIDEO_BITRATE', defaultBitrate);
 const timelineScale = numberEnv('CVPR_TIMELINE_SCALE', 1.55);
 const temporalBlend = numberEnv('CVPR_TEMPORAL_BLEND', 0.02);
 const outputPath = path.resolve(repoRoot, process.env.CVPR_OUTPUT_PATH || 'static/video/cvpr26-art-demo.mp4');
 const chromePath = process.env.CHROME_PATH || '/home/jingya/.local/bin/google-chrome';
+const videoSegments = [
+    { label: 'metal_bunny', object: 'bunny', material: 'metal' },
+    { label: 'textured_goose', object: 'goose', material: 'textures' },
+    { label: 'textured_cat_and_seal', object: 'catAndSeal', material: 'textures' },
+    { label: 'jade_sphere', object: 'sphere', material: 'jade' },
+    { label: 'glass_torus_knot', object: 'torusKnot', material: 'glass' },
+    { label: 'plastic_box', object: 'box', material: 'plastic' },
+];
 
 function intEnv(name, fallback) {
     const value = Number.parseInt(process.env[name] || '', 10);
@@ -294,12 +305,17 @@ async function readBrowserString(client, name, chunkSize = 1_000_000) {
     return chunks.join('');
 }
 
-function installTimelineExpression(scale) {
-    return `(() => {
+function installTimelineExpression(scale, options) {
+    return `(async () => {
         const api = window.__cvpr26Demo;
         if (!api) throw new Error('CVPR demo API is not available');
 
         const timelineScale = ${JSON.stringify(scale)};
+        const timelineOptions = ${JSON.stringify(options)};
+        const loopSeconds = Math.max(1, Number(timelineOptions.loopSeconds) || 60);
+        const segments = Array.isArray(timelineOptions.segments) && timelineOptions.segments.length
+            ? timelineOptions.segments
+            : [{ label: 'metal_bunny', object: 'bunny', material: 'metal' }];
         const scaleFps = (value) => Math.max(1, Math.round(value / Math.max(1, timelineScale)));
         const log = [];
         const olatFps = scaleFps(10.5);
@@ -307,6 +323,8 @@ function installTimelineExpression(scale) {
         let lastSideIndex = -1;
         let lastOlatIdx = -1;
         let lastCameraBucket = '';
+        let lastSegmentIndex = -1;
+        let activeSegment = segments[0];
 
         document.body.classList.add('cvpr-video-capture');
         if (!document.getElementById('cvprVideoCaptureStyle')) {
@@ -325,6 +343,7 @@ function installTimelineExpression(scale) {
                 pattern: state.pattern,
                 hdriPattern: state.hdriPattern,
                 material: state.material,
+                object: state.object,
                 cameraIndex: state.cameraIndex,
                 modelLoading: state.modelLoading,
             });
@@ -346,6 +365,68 @@ function installTimelineExpression(scale) {
             }
         }
 
+        function segmentIndexForTime(videoTime) {
+            return Math.max(0, Math.min(segments.length - 1, Math.floor(Math.max(0, videoTime) / loopSeconds)));
+        }
+
+        function localTimeForTime(videoTime) {
+            const value = Math.max(0, videoTime);
+            return value - Math.floor(value / loopSeconds) * loopSeconds;
+        }
+
+        function resetLoopState() {
+            lastBeatIndex = -1;
+            lastSideIndex = -1;
+            lastOlatIdx = -1;
+            lastCameraBucket = '';
+        }
+
+        function applySegment(segment, videoTime) {
+            activeSegment = segment || segments[0];
+            if (activeSegment.object && typeof api.setObject === 'function') {
+                api.setObject(activeSegment.object);
+            }
+            if (activeSegment.material && typeof api.setMaterial === 'function') {
+                api.setMaterial(activeSegment.material);
+            }
+            record('segment_' + (activeSegment.label || activeSegment.object || 'object'), videoTime);
+        }
+
+        function updateSegment(videoTime) {
+            const index = segmentIndexForTime(videoTime);
+            if (index === lastSegmentIndex) return localTimeForTime(videoTime);
+            lastSegmentIndex = index;
+            resetLoopState();
+            applySegment(segments[index], videoTime);
+            return localTimeForTime(videoTime);
+        }
+
+        function waitForModelIdle(timeoutMs = 12000) {
+            const started = performance.now();
+            return new Promise((resolve) => {
+                const check = () => {
+                    const state = api.getState ? api.getState() : {};
+                    if (!state.modelLoading || performance.now() - started >= timeoutMs) {
+                        resolve();
+                        return;
+                    }
+                    window.setTimeout(check, 80);
+                };
+                check();
+            });
+        }
+
+        async function preloadSegmentObjects() {
+            const seen = new Set();
+            for (const segment of segments) {
+                if (!segment || !segment.object || seen.has(segment.object)) continue;
+                seen.add(segment.object);
+                if (typeof api.setObject === 'function') api.setObject(segment.object);
+                if (segment.material && typeof api.setMaterial === 'function') api.setMaterial(segment.material);
+                await waitForModelIdle();
+            }
+        }
+
         const hdriBase = {
             autoplay: false,
             hdriIntensity: 1.05,
@@ -355,8 +436,13 @@ function installTimelineExpression(scale) {
             hdriVerticalRotation: 4,
         };
 
+        function applyActiveMaterial() {
+            const material = activeSegment && activeSegment.material ? activeSegment.material : 'metal';
+            api.setMaterial(material);
+        }
+
         function hdri(pattern, rotation, extra = {}) {
-            api.setMaterial('metal');
+            applyActiveMaterial();
             api.setPattern('hdri', {
                 ...hdriBase,
                 ...extra,
@@ -366,7 +452,7 @@ function installTimelineExpression(scale) {
         }
 
         function setOlatFrame(idx = 12) {
-            api.setMaterial('metal');
+            applyActiveMaterial();
             if (typeof api.setOlatFrame === 'function') {
                 api.setOlatFrame(idx, {
                     fps: olatFps,
@@ -470,60 +556,68 @@ function installTimelineExpression(scale) {
                     if (typeof window.__finishBootPreview === 'function') window.__finishBootPreview();
                 },
             },
-            { time: 5.4, label: 'hdri_horizon_metal', action: () => hdri('horizon', 8, { hdriIntensity: 1.0, hdriContrast: 0.48 }) },
-            { time: 8.4, label: 'hdri_sunrise_metal', action: () => hdri('sunrise', 58, { hdriLightIntensity: 1.45, hdriContrast: 0.52 }) },
-            { time: 11.4, label: 'hdri_cool_sky_metal', action: () => hdri('coolSky', 126, { hdriLightIntensity: 1.55, hdriContrast: 0.58 }) },
-            { time: 14.4, label: 'hdri_sunset_metal', action: () => hdri('sunset', 204, { hdriIntensity: 1.12, hdriLightIntensity: 1.65 }) },
-            { time: 17.4, label: 'hdri_night_metal', action: () => hdri('night', 285, { hdriIntensity: 1.18, hdriLightIntensity: 1.75, hdriContrast: 0.68 }) },
-            { time: 20.6, label: 'olat_start_metal', action: () => setOlatFrame(14) },
+            { time: 5.4, label: 'hdri_horizon', action: () => hdri('horizon', 8, { hdriIntensity: 1.0, hdriContrast: 0.48 }) },
+            { time: 8.4, label: 'hdri_sunrise', action: () => hdri('sunrise', 58, { hdriLightIntensity: 1.45, hdriContrast: 0.52 }) },
+            { time: 11.4, label: 'hdri_cool_sky', action: () => hdri('coolSky', 126, { hdriLightIntensity: 1.55, hdriContrast: 0.58 }) },
+            { time: 14.4, label: 'hdri_sunset', action: () => hdri('sunset', 204, { hdriIntensity: 1.12, hdriLightIntensity: 1.65 }) },
+            { time: 17.4, label: 'hdri_night', action: () => hdri('night', 285, { hdriIntensity: 1.18, hdriLightIntensity: 1.75, hdriContrast: 0.68 }) },
+            { time: 20.6, label: 'olat_start', action: () => setOlatFrame(14) },
         ];
 
         const sideBeatStart = 5.4;
         const sideBeatStep = 7.8;
         const sideCameraSequence = [0, 1, 2, 3, 4, 5, 0, 2];
 
-        function updateSideCamera(videoTime) {
+        function updateSideCamera(localTime, videoTime) {
             const index = Math.max(0, Math.min(
                 sideCameraSequence.length - 1,
-                Math.floor((videoTime - sideBeatStart) / sideBeatStep)
+                Math.floor((localTime - sideBeatStart) / sideBeatStep)
             ));
-            if (videoTime < sideBeatStart || index === lastSideIndex) return;
+            if (localTime < sideBeatStart || index === lastSideIndex) return;
             lastSideIndex = index;
-            run('side_camera_' + sideCameraSequence[index], videoTime, () => api.setCamera(sideCameraSequence[index]));
+            run((activeSegment.label || 'segment') + '_side_camera_' + sideCameraSequence[index], videoTime, () => api.setCamera(sideCameraSequence[index]));
         }
 
-        function updateOlat(videoTime) {
+        function updateOlat(localTime) {
             const olatStart = 20.6;
-            if (videoTime < olatStart) return;
+            if (localTime < olatStart) return;
             const state = api.getState ? api.getState() : {};
             const boardCount = Math.max(1, state.lightboards || 1);
             const prelude = olatFps + Math.max(1, Math.round(olatFps / 2));
-            const boardOffset = Math.floor((videoTime - olatStart) * olatFps);
+            const boardOffset = Math.floor((localTime - olatStart) * olatFps);
             const idx = prelude + ((14 + boardOffset) % boardCount);
             if (idx === lastOlatIdx) return;
             lastOlatIdx = idx;
             setOlatFrame(idx);
         }
 
-        function updateEvents(videoTime) {
-            while (lastBeatIndex + 1 < beats.length && videoTime >= beats[lastBeatIndex + 1].time) {
+        function updateEvents(localTime, videoTime) {
+            while (lastBeatIndex + 1 < beats.length && localTime >= beats[lastBeatIndex + 1].time) {
                 lastBeatIndex += 1;
                 const beat = beats[lastBeatIndex];
-                run(beat.label, videoTime, beat.action);
+                run((activeSegment.label || 'segment') + '_' + beat.label, videoTime, beat.action);
             }
         }
 
         window.__cvpr26VideoTimelineLog = log;
         window.__cvpr26VideoFrame = (videoTime, frameIndex, frameCount) => {
-            updateEvents(videoTime);
-            updateSideCamera(videoTime);
-            setMainCameraForTime(videoTime);
-            updateOlat(videoTime);
-            window.__cvpr26VideoTime = { videoTime, frameIndex, frameCount, olatFps };
+            const localTime = updateSegment(videoTime);
+            updateEvents(localTime, videoTime);
+            updateSideCamera(localTime, videoTime);
+            setMainCameraForTime(localTime);
+            updateOlat(localTime);
+            window.__cvpr26VideoTime = { videoTime, localTime, frameIndex, frameCount, olatFps, segment: activeSegment };
         };
+
+        await waitForModelIdle();
+        await preloadSegmentObjects();
+        applySegment(segments[0], 0);
+        await waitForModelIdle();
+        lastSegmentIndex = 0;
+        resetLoopState();
         window.__cvpr26VideoFrame(0, 0, 1);
 
-        return { ok: true, timelineScale, timingMode: 'output-frame', olatFps, initialState: api.getState ? api.getState() : null };
+        return { ok: true, timelineScale, loopSeconds, segments, timingMode: 'output-frame', olatFps, initialState: api.getState ? api.getState() : null };
     })()`;
 }
 
@@ -534,9 +628,14 @@ function captureExpression(options) {
         const height = options.height;
         const fps = options.fps;
         const seconds = options.playbackSeconds;
+        const startVideoTime = Math.max(0, Number(options.startVideoTime) || 0);
+        const totalPlaybackSeconds = Math.max(seconds, Number(options.totalPlaybackSeconds) || seconds);
+        const loopSeconds = Math.max(1, Number(options.loopSeconds) || 60);
         const bitrate = options.bitrate;
         const temporalBlend = Math.max(0, Math.min(0.18, options.temporalBlend || 0));
         const frameCount = Math.round(seconds * fps);
+        const totalFrameCount = Math.round(totalPlaybackSeconds * fps);
+        const frameOffset = Math.round(startVideoTime * fps);
         const frameDurationUs = Math.round(1000000 / fps);
         const keyInterval = Math.max(1, Math.round(fps * 2));
 
@@ -551,6 +650,7 @@ function captureExpression(options) {
         const ctx = captureCanvas.getContext('2d', { alpha: false, desynchronized: true });
         const historyCanvas = temporalBlend > 0 ? document.createElement('canvas') : null;
         const historyCtx = historyCanvas ? historyCanvas.getContext('2d', { alpha: false, desynchronized: true }) : null;
+        let lastHistoryLoopIndex = -1;
         if (historyCanvas) {
             historyCanvas.width = width;
             historyCanvas.height = height;
@@ -1049,10 +1149,17 @@ function captureExpression(options) {
         }
 
         function drawFrame(videoTime) {
+            const localTime = videoTime - Math.floor(videoTime / loopSeconds) * loopSeconds;
+            const loopIndex = Math.floor(videoTime / loopSeconds);
             const viewportW = Math.max(1, window.innerWidth || document.documentElement.clientWidth || width);
             const viewportH = Math.max(1, window.innerHeight || document.documentElement.clientHeight || height);
             const sx = width / viewportW;
             const sy = height / viewportH;
+
+            if (historyCanvas && loopIndex !== lastHistoryLoopIndex) {
+                lastHistoryLoopIndex = loopIndex;
+                window.__cvpr26CaptureHasHistory = false;
+            }
 
             ctx.globalAlpha = 1;
             ctx.fillStyle = '#000';
@@ -1074,8 +1181,8 @@ function captureExpression(options) {
             }
 
             ctx.globalAlpha = 1;
-            drawLoopIntro(videoTime);
-            drawLoopOutro(videoTime);
+            drawLoopIntro(localTime);
+            drawLoopOutro(localTime);
             if (historyCanvas && historyCtx) {
                 if (window.__cvpr26CaptureHasHistory) {
                     ctx.globalAlpha = temporalBlend;
@@ -1093,19 +1200,20 @@ function captureExpression(options) {
 
         const start = performance.now();
         for (let i = 0; i < frameCount; i += 1) {
+            const videoTime = startVideoTime + i / fps;
             const target = start + (i * 1000 / fps);
             const waitMs = target - performance.now();
             if (waitMs > 1) await new Promise((resolve) => setTimeout(resolve, Math.min(waitMs, 12)));
             if (typeof window.__cvpr26VideoFrame === 'function') {
                 try {
-                    window.__cvpr26VideoFrame(i / fps, i, frameCount);
+                    window.__cvpr26VideoFrame(videoTime, frameOffset + i, totalFrameCount);
                 } catch (err) {
                     if (errors.length < 20) errors.push(String(err && err.stack ? err.stack : err));
                 }
             }
             await nextAnimationFrame();
 
-            drawFrame(i / fps);
+            drawFrame(videoTime);
             const frame = new VideoFrame(captureCanvas, {
                 timestamp: i * frameDurationUs,
                 duration: frameDurationUs,
@@ -1118,6 +1226,9 @@ function captureExpression(options) {
                 window.__cvpr26CaptureProgress = {
                     frame: i,
                     frameCount,
+                    frameOffset,
+                    totalFrameCount,
+                    startVideoTime,
                     encodedChunks: chunks.length,
                     encodedBytes,
                     elapsedMs: Math.round(performance.now() - start),
@@ -1142,6 +1253,9 @@ function captureExpression(options) {
             height,
             fps,
             playbackSeconds: seconds,
+            startVideoTime,
+            totalPlaybackSeconds,
+            loopSeconds,
             frameDurationUs,
             encodedFrameCount: chunks.length,
             encodedBytes,
@@ -1159,6 +1273,9 @@ function captureExpression(options) {
         window.__cvpr26CaptureProgress = {
             frame: frameCount,
             frameCount,
+            frameOffset,
+            totalFrameCount,
+            startVideoTime,
             encodedChunks: chunks.length,
             encodedBytes,
             elapsedMs: Math.round(performance.now() - start),
@@ -1170,7 +1287,12 @@ function captureExpression(options) {
             height,
             fps,
             playbackSeconds: seconds,
+            startVideoTime,
+            totalPlaybackSeconds,
+            loopSeconds,
             frameCount,
+            frameOffset,
+            totalFrameCount,
             encodedFrameCount: chunks.length,
             encodedBytes,
             errors: errors.slice(0, 8),
@@ -1360,33 +1482,92 @@ async function run() {
         await loadEvent;
 
         await waitForExpression(client, `window.__cvpr26Demo && typeof window.__cvpr26Demo.getState === 'function'`, 180000);
-        await evaluate(client, installTimelineExpression(timelineScale));
-
-        const captureSummary = await evaluate(client, captureExpression({
-            width,
-            height,
-            fps,
-            playbackSeconds,
-            bitrate,
-            temporalBlend,
+        await evaluate(client, installTimelineExpression(timelineScale, {
+            loopSeconds,
+            segments: videoSegments,
         }));
 
-        const payloadJson = await readBrowserString(client, '__cvpr26EncodedPayload');
-        const payload = JSON.parse(payloadJson);
-        const avcC = Buffer.from(payload.decoderConfigDescription, 'base64');
-        if (!avcC.length) throw new Error('Missing avcC decoder description from WebCodecs');
+        const chunks = [];
+        const segmentSummaries = [];
+        const captureErrors = [];
+        const timelineLog = [];
+        let timelineLogCursor = 0;
+        let avcC = null;
+        let payloadMeta = null;
+        const segmentCount = Math.max(1, Math.ceil(playbackSeconds / loopSeconds));
 
-        const chunks = payload.chunks.map((chunk) => ({
-            type: chunk.type,
-            timestamp: chunk.timestamp,
-            duration: chunk.duration,
-            data: Buffer.from(chunk.data, 'base64'),
-        }));
+        for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
+            const startVideoTime = segmentIndex * loopSeconds;
+            const segmentSeconds = Math.min(loopSeconds, playbackSeconds - startVideoTime);
+            if (segmentSeconds <= 0) continue;
+
+            const segmentLabel = videoSegments[Math.min(segmentIndex, videoSegments.length - 1)]?.label || `segment_${segmentIndex + 1}`;
+            console.log(JSON.stringify({
+                event: 'segment_start',
+                segment: segmentIndex + 1,
+                segmentCount,
+                label: segmentLabel,
+                startVideoTime,
+                segmentSeconds,
+            }));
+
+            const captureSummary = await evaluate(client, captureExpression({
+                width,
+                height,
+                fps,
+                playbackSeconds: segmentSeconds,
+                totalPlaybackSeconds: playbackSeconds,
+                startVideoTime,
+                loopSeconds,
+                bitrate,
+                temporalBlend,
+            }));
+
+            const payloadJson = await readBrowserString(client, '__cvpr26EncodedPayload');
+            const payload = JSON.parse(payloadJson);
+            payloadMeta = payload;
+
+            const segmentAvcC = Buffer.from(payload.decoderConfigDescription, 'base64');
+            if (!segmentAvcC.length) throw new Error('Missing avcC decoder description from WebCodecs');
+            if (!avcC) {
+                avcC = segmentAvcC;
+            } else if (!avcC.equals(segmentAvcC)) {
+                captureErrors.push(`Segment ${segmentIndex + 1} encoder config differs from the first segment`);
+            }
+
+            const segmentChunks = payload.chunks.map((chunk) => ({
+                type: chunk.type,
+                timestamp: chunk.timestamp,
+                duration: chunk.duration,
+                data: Buffer.from(chunk.data, 'base64'),
+            }));
+            chunks.push(...segmentChunks);
+
+            const fullTimelineLog = payload.timelineLog || captureSummary.timelineLog || [];
+            timelineLog.push(...fullTimelineLog.slice(timelineLogCursor));
+            timelineLogCursor = fullTimelineLog.length;
+            captureErrors.push(...(payload.errors || captureSummary.errors || []));
+
+            segmentSummaries.push({
+                segment: segmentIndex + 1,
+                label: segmentLabel,
+                startVideoTime,
+                segmentSeconds,
+                encodedFrameCount: segmentChunks.length,
+                encodedBytes: payload.encodedBytes || captureSummary.encodedBytes || 0,
+                elapsedMs: captureSummary.elapsedMs,
+            });
+
+            await evaluate(client, `window.__cvpr26EncodedPayload = ''; window.__cvpr26CaptureProgress = null;`);
+            console.log(JSON.stringify(segmentSummaries[segmentSummaries.length - 1]));
+        }
+
+        if (!avcC) throw new Error('No encoded video segments were captured');
 
         const mp4 = makeMp4({
-            width: payload.width,
-            height: payload.height,
-            fps: payload.fps,
+            width: payloadMeta.width,
+            height: payloadMeta.height,
+            fps: payloadMeta.fps,
             chunks,
             avcC,
         });
@@ -1401,15 +1582,19 @@ async function run() {
             height,
             fps,
             playbackSeconds,
+            loopSeconds,
+            loopCount,
             bitrate,
             timelineScale,
             temporalBlend,
+            videoSegments,
+            segmentSummaries,
             encodedFrameCount: chunks.length,
             keyFrameCount: chunks.filter((chunk) => chunk.type === 'key').length,
-            captureElapsedMs: captureSummary.elapsedMs,
-            captureErrors: payload.errors || captureSummary.errors || [],
+            captureElapsedMs: segmentSummaries.reduce((sum, item) => sum + (item.elapsedMs || 0), 0),
+            captureErrors,
             runtimeExceptions: exceptions.slice(0, 8),
-            timelineLog: payload.timelineLog || captureSummary.timelineLog || [],
+            timelineLog,
             consoleMessages: consoleMessages.slice(-8),
         };
         console.log(JSON.stringify(summary, null, 2));
