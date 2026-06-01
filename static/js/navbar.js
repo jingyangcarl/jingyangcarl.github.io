@@ -25,11 +25,11 @@ document.write(`
                     <a class="navbar-item" href="https://jingyangcarl.github.io/ICTPolarReal">
                         CVPR 2026 - A Polarized Reflection and Material Dataset (USC)
                     </a>
+                    <a class="navbar-item" href="https://jingyangcarl.github.io">
+                        CVPR 2026 (Art) - The Algorithmic Aura: The Virtual Light Stage
+                    </a>
                     <a class="navbar-item" href="https://corneliushsiao.github.io/GSLE">
                         WACV 2025 - Localized Gaussian Splatting Editing (USC)
-                    </a>
-                    <a class="navbar-item" href="https://jingyangcarl.github.io/RelightableStudio/">
-                        U.S. Patent Filing 2024 - RelightableStudio (USC &amp; Dolby Vision)
                     </a>
                     <a class="navbar-item" href="https://jingyangcarl.github.io/PolarizedReflectanceField">
                         2024 - Polarized Reflectance Field (USC &amp; Sony Research)
@@ -40,9 +40,6 @@ document.write(`
                     <a class="navbar-item" href="https://jingyangcarl.github.io/LightSamplingField/">
                         ICLR 2023 - Light Sampling Field (USC)
                     </a>
-                    <a class="navbar-item" href="https://jingyangcarl.github.io">
-                        Virtual Light Stage
-                    </a>
 
                     <hr class="navbar-divider">
 
@@ -50,13 +47,10 @@ document.write(`
                         <b>Research on Science of Science</b>
                     </div>
                     <a class="navbar-item" href="https://iclr.cc/virtual/2026/poster/10010812">
-                        ICLR 2026 - Paper Copilot: Tracking the Evolution of Peer Review in AI Conferences
+                        ICLR 2026 - Paper Copilot: Tracking the Evolution of Peer Review in AI Conferences (papercopilot.com - 16.58M+ global impression)
                     </a>
                     <a class="navbar-item" href="https://icml.cc/virtual/2025/poster/40116">
                         ICML 2025 - Position: The AI/ML Community Should Adopt a More Transparent and Regulated Peer Review Process (USC)
-                    </a>
-                    <a class="navbar-item" href="https://papercopilot.com">
-                        Paper Copilot (papercopilot.com - 16.58M+ global impression)
                     </a>
                 </div>
             </div>
